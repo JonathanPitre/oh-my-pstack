@@ -27,6 +27,8 @@ function git(args, cwd) {
 export function normalizeContent(source) {
   return source
     .replaceAll("~/.cursor/rules/pstack-models.mdc", "$PSTACK_CONFIG (or .pstack/config.md)")
+    .replace(/\/[^/\s]+(?:\/[^/\s]+)*\/\.cursor\/rules\/pstack-models\.mdc/g, "$PSTACK_CONFIG (or .pstack/config.md)")
+    .replace(/[A-Za-z]:\\(?:[^\\\s]+\\)*\.cursor\\rules\\pstack-models\.mdc/g, "$PSTACK_CONFIG (or .pstack/config.md)")
     .replaceAll(".cursor/skills/", "skills/")
     .replaceAll(".cursor/plugins/", "plugins/")
     .replaceAll("subagent_type:", "role:")
@@ -160,13 +162,12 @@ async function applyUpdate(lock, sourceRoot, commit, dryRun) {
       }
     }
   }
-
   if (changed.length === 0) {
     console.log(`No managed skill changes for upstream ${commit}.`);
-    return 0;
+  } else {
+    console.log(`${dryRun ? "Would update" : "Updated"} ${changed.length} managed files:`);
+    for (const path of changed) console.log(`- ${path}`);
   }
-  console.log(`${dryRun ? "Would update" : "Updated"} ${changed.length} managed files:`);
-  for (const path of changed) console.log(`- ${path}`);
   if (!dryRun) {
     await writeFile(
       lockPath,
@@ -189,7 +190,7 @@ export async function main(argv = process.argv.slice(2)) {
     const commit = git(["rev-parse", "HEAD"], source.path);
     console.log(`pinned=${lock.commit}`);
     console.log(`latest=${commit}`);
-    if (commit === lock.commit) {
+    if (commit === lock.commit && args.mode === "check") {
       console.log("Upstream is already pinned at the latest checked revision.");
       return 0;
     }
@@ -208,3 +209,5 @@ if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
     process.exitCode = 1;
   });
 }
+
+

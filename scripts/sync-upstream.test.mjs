@@ -7,6 +7,24 @@ import test from "node:test";
 
 import { isProtectedPath, normalizeContent } from "./sync-upstream.mjs";
 
+test("normalization removes supported Cursor bindings, including absolute paths", () => {
+  const source = [
+    "config: ~/.cursor/rules/pstack-models.mdc",
+    "config: /home/alice/.cursor/rules/pstack-models.mdc",
+    "config: C:\\Users\\alice\\.cursor\\rules\\pstack-models.mdc",
+    "agent: Task subagent",
+    "question: AskQuestion",
+    "model: claude-fable-5-thinking-max",
+    "model: claude-fable-5-1-thinking-max",
+  ].join("\n");
+
+  const normalized = normalizeContent(source);
+
+  assert.doesNotMatch(normalized, /(?:~|\/home\/alice|C:\\Users\\alice)\\?\.cursor/u);
+  assert.equal((normalized.match(/\$PSTACK_CONFIG/g) ?? []).length, 3);
+  assert.match(normalized, /host task runner/u);
+});
+
 test("normalization removes the supported Cursor runtime bindings", () => {
   const source = [
     "config: ~/.cursor/rules/pstack-models.mdc",
@@ -173,3 +191,87 @@ for (const change of ["prefix edit", "prefix addition", "protected deletion", "m
     }
   });
 }
+test("apply repairs drift only in upstream-managed files at the same pin", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "pstack-sync-drift-test-"));
+  const source = join(fixture, "source");
+  const target = join(fixture, "target");
+  const git = (...args) => execFileSync("git", args, {
+    cwd: source, encoding: "utf8",
+  }).trim();
+  try {
+    await mkdir(join(source, "pstack/skills/managed"), { recursive: true });
+    await mkdir(join(target, "skills/managed"), { recursive: true });
+    await writeFile(join(source, "pstack/skills/managed/SKILL.md"), "upstream content\n");
+    await writeFile(join(target, "skills/managed/SKILL.md"), "locally edited\n");
+    await writeFile(join(target, "skills/my-local-skill.md"), "local-only content\n");
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "test@example.invalid");
+    git("config", "user.name", "pstack test");
+    git("add", ".");
+    git("commit", "-q", "-m", "baseline");
+    const baseline = git("rev-parse", "HEAD");
+    await writeFile(join(target, "upstream.lock.json"), `${JSON.stringify({
+      repository: "local",
+      ref: "main",
+      path: "pstack",
+      commit: baseline,
+      protectedPrefixes: [],
+      protectedPaths: [],
+      sourceRoots: [{ source: "pstack/skills", destination: "skills" }],
+    })}\n`);
+
+    const result = spawnSync(process.execPath, [
+      join(process.cwd(), "scripts/sync-upstream.mjs"), "--apply", "--source", source,
+    ], { cwd: target, env: { ...process.env, PSTACK_SYNC_ROOT: target }, encoding: "utf8" });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(await readFile(join(target, "skills/managed/SKILL.md"), "utf8"), "upstream content\n");
+    assert.equal(await readFile(join(target, "skills/my-local-skill.md"), "utf8"), "local-only content\n");
+    assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"), "utf8")).commit, baseline);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("apply advances the pin when a newer commit has no managed content changes", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "pstack-sync-no-change-test-"));
+  const source = join(fixture, "source");
+  const target = join(fixture, "target");
+  const git = (...args) => execFileSync("git", args, {
+    cwd: source, encoding: "utf8",
+  }).trim();
+  try {
+    await mkdir(join(source, "pstack/skills/managed"), { recursive: true });
+    await mkdir(join(target, "skills/managed"), { recursive: true });
+    await writeFile(join(source, "pstack/skills/managed/SKILL.md"), "same content\n");
+    await writeFile(join(target, "skills/managed/SKILL.md"), "same content\n");
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "test@example.invalid");
+    git("config", "user.name", "pstack test");
+    git("add", ".");
+    git("commit", "-q", "-m", "baseline");
+    const baseline = git("rev-parse", "HEAD");
+    await writeFile(join(source, "unmanaged.txt"), "unmanaged change\n");
+    git("add", ".");
+    git("commit", "-q", "-m", "unmanaged change");
+    const latest = git("rev-parse", "HEAD");
+    await writeFile(join(target, "upstream.lock.json"), `${JSON.stringify({
+      repository: "local",
+      ref: "main",
+      path: "pstack",
+      commit: baseline,
+      protectedPrefixes: [],
+      protectedPaths: [],
+      sourceRoots: [{ source: "pstack/skills", destination: "skills" }],
+    })}\n`);
+
+    const result = spawnSync(process.execPath, [
+      join(process.cwd(), "scripts/sync-upstream.mjs"), "--apply", "--source", source,
+    ], { cwd: target, env: { ...process.env, PSTACK_SYNC_ROOT: target }, encoding: "utf8" });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"), "utf8")).commit, latest);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
