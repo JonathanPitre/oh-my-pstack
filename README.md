@@ -172,8 +172,19 @@ The updater:
 4. Preserves OMP adapters and protected portability adaptations.
 5. Stops before writing if an adapted file changed upstream, unless a bound review
    supplies an explicit per-conflict write or delete.
-6. Runs verification, updater tests, Bun tests, and strict TypeScript checking.
-7. Opens a pull request only after those checks pass.
+6. Runs verification, updater tests, Bun tests, and strict TypeScript checking only
+   when the update changes managed files or the pin.
+7. Opens a pull request and squash-merges it only after validation and exact-tree,
+   PR-head, and unchanged-main checks pass.
+
+The workflow uses Ubuntu 26.04 and the latest Node 26 patch. Its JavaScript
+actions use Node 24 independently of the Node version selected for scripts.
+Action releases are pinned to commit hashes. Bun's existing package typecheck
+script uses the installed compiler rather than downloading one through `bunx`.
+
+Exit code 2 is a reconciliation rejection, not a Node or Ubuntu version error.
+Resolve the listed file conflicts with `--export-review` before another update
+can advance the pin. Runtime upgrades do not resolve conflicting instructions.
 
 Run it locally:
 
@@ -196,7 +207,7 @@ npm run verify
 npm run test:sync
 bun install --cwd skills/poteto-mode/scripts --frozen-lockfile
 bun test orch watch-pr
-bunx tsc --project skills/poteto-mode/scripts/watch-pr/tsconfig.json --noEmit --strict
+bun run --cwd skills/poteto-mode/scripts typecheck
 ```
 
 `npm run verify` checks skill inventory, frontmatter, local references, manifests,
