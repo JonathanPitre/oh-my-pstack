@@ -12,6 +12,8 @@ Investigate the motivation and intent behind code.
 
 Companion to the `how` skill. `how` answers what the code does and how it works. `why` answers what forces led to its shape.
 
+Use the `why investigators` and `why synthesizer` lines from `$PSTACK_CONFIG` when that variable is set, otherwise `.pstack/config.md`. Pass a per-item `model` only when the live task schema exposes that field and the value is in the live inventory. Leave the model unset for `auto` or `inherit-parent` when the host can pass the parent model to a child. If the host rejects a configured choice, honor its documented rejection and fallback policy and report the gap; do not guess a vendor family or substitute a default slug. A missing child facility is a capability gap: the root may investigate on the active model, but it must not claim independent investigator or synthesizer children ran.
+
 ## Operating Posture
 
 Operate as a **careful, cautious, and precise investigator**. Be honest about what you know vs what you're inferring. Read `references/epistemics.md` for the full confidence framework and phrasing guide. The synthesizer must follow it.
@@ -77,9 +79,9 @@ Source control is always available through git and `gh`. For the other six, clas
 
 Aim for a complete **coverage map**, not a minimal one. Document the null, don't skip the search.
 
-Launch all matching investigators in a single message so they run concurrently. Don't ask one agent to cover multiple MCPs.
+The root launches all matching investigators concurrently through the host's task facility. Don't ask one agent to cover multiple MCPs.
 
-For each category, use the configured `why investigators` choice when present; otherwise use the canonical `researcher` role. Give investigators access to the matching host tool while forbidding writes in every standalone brief. If the host cannot combine a read-only repository posture with external-tool access, preserve tool access and enforce no writes in the brief rather than assuming a vendor-specific mode.
+For each category, use the configured `why investigators` choice when present; otherwise map the canonical `researcher` role through the live host inventory. Give investigators access to the matching host tool while forbidding writes in every standalone brief. If the host cannot combine a read-only repository posture with external-tool access, preserve tool access and enforce no writes in the brief rather than assuming a vendor-specific mode.
 
 Each investigator gets:
 1. The base prompt from `references/investigator-prompt.md`
@@ -95,17 +97,11 @@ Spawn one investigator per category that has a matching MCP. Each owns exactly o
 Each entry names the category and the kind of "why" it uniquely surfaces. Use it to know what to expect back, how to name a gap when a category returns empty, and (only in the rare provably-irrelevant case) to justify a skip.
 
 1. **Source control investigator**. Git history, `gh` for PRs, code comments, tests. Always spawn. The only guaranteed source. Best at surfacing *implementation-time rationale captured during review*.
-
 2. **Issue / ticket tracker investigator** (e.g. Linear, Jira, GitHub Issues, Plane, Shortcut MCP). Best at surfacing *the product or business forcing function*. Strongest when the why is external to engineering.
-
 3. **Long-form documents investigator** (e.g. Notion, Confluence, Google Docs, Coda MCP). Best at surfacing *long-form design rationale*. Where the why is written out before it becomes code.
-
 4. **Real-time team chat investigator** (e.g. Slack, Discord, Microsoft Teams, Mattermost MCP). Best at surfacing *real-time deliberation that never reached a doc*. Especially important when the source control, ticket, and doc paper trail is thin.
-
 5. **Infrastructure observability investigator** (e.g. Datadog, New Relic, Honeycomb, Grafana, Splunk MCP). Infra/runtime view. Best at surfacing *infrastructure and runtime reality that motivated the code*. Strongest when the target reacts to an infra signal (timeouts, retries, rate limits, circuit breakers).
-
 6. **Error / exception tracking investigator** (e.g. Sentry, Rollbar, Bugsnag, Airbrake MCP). Best at surfacing *the specific exceptions and error trajectories that motivated defensive or corrective code*. Strongest for catch blocks, null guards, type checks, retries, and other defenses.
-
 7. **Product analytics warehouse investigator** (e.g. Databricks, Snowflake, BigQuery, ClickHouse, dbt, Redshift MCP). Product/data view. Best at surfacing *product and data reality that shaped the code*. Strongest for flag-gated code, experiment-driven ships, data migrations, and "where did this number come from" questions.
 
 ### When to skip an investigator
@@ -119,7 +115,7 @@ If your scope assessment suggests a single-commit trivial target where the PR de
 
 ## Step 4. Synthesize
 
-Launch one `synthesizer` child, using the configured `why synthesizer` choice when present. Give it the host tools needed to spot-verify citations while forbidding repository writes in its standalone brief.
+The root launches one `synthesizer` child, using the configured `why synthesizer` choice when present. Give it the host tools needed to spot-verify citations while forbidding repository writes in its standalone brief.
 
 The synthesizer gets:
 1. The investigator findings, including any null results and any categories skipped with justification
@@ -130,7 +126,7 @@ The synthesizer gets:
 
 ## Step 5. Present
 
-Take the synthesizer's output and present it to the user. You may lightly edit for clarity or add context from the conversation, but **do not rewrite the confidence language**.
+Take the synthesizer's output and present it to the user. You may lightly edit for clarity or context from the conversation, but **do not rewrite the confidence language**.
 
 ## Output Format
 

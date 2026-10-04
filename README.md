@@ -14,7 +14,7 @@ adapter.
 
 ## What is included
 
-- 47 upstream pstack skills and their supporting references.
+- 50 upstream pstack skills and their supporting references.
 - Benny's three fail-closed issue-triage/reproduction skills.
 - `poteto-mode` for routing work through the right playbook.
 - `make-bot-ui` for connecting a local UI to an available webhook automation.
@@ -170,7 +170,8 @@ The updater:
 2. Normalizes known Cursor runtime bindings for portable hosts.
 3. Updates only upstream-owned files.
 4. Preserves OMP adapters and protected portability adaptations.
-5. Stops before writing if an adapted file changed upstream.
+5. Stops before writing if an adapted file changed upstream, unless a bound review
+   supplies an explicit per-conflict write or delete.
 6. Runs verification, updater tests, Bun tests, and strict TypeScript checking.
 7. Opens a pull request only after those checks pass.
 
@@ -179,11 +180,14 @@ Run it locally:
 ```bash
 npm run sync:check
 npm run sync:apply -- --dry-run
-npm run sync:apply
+npm run sync:export-review -- /tmp/pstack-review
+# resolve every conflict in that directory, then:
+npm run sync:apply -- --review /tmp/pstack-review --dry-run
+npm run sync:apply -- --review /tmp/pstack-review
 ```
 
-Protected adaptation changes require a human merge decision. The updater never
-silently overwrites them.
+Protected adaptation changes require an explicit review decision. The updater never
+silently overwrites them. Ordinary clean updates stay planner-owned.
 
 ## Development and verification
 

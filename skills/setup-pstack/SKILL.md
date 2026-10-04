@@ -61,6 +61,10 @@ If the host has a task facility but cannot enumerate models, use only a host rol
 mapping that the facility documents. Do not ask the user to invent a raw slug.
 `inherit-parent` is valid only when the host can pass the current model to a child.
 
+When the live task schema exposes a per-item `model` field, record that OMP and
+compatible hosts can assign a model per child. Do not omit or forbid that field
+to compensate for a stale example.
+
 ### 2. Load current state
 
 Read the selected configuration path when it exists and treat its concrete values
@@ -69,12 +73,14 @@ Preserve explicit model families, panel lists, and supported aliases on reruns.
 If it contains only portable role aliases from a host without
 per-child delegation, treat those aliases as stale inactive state and start from
 the detected models instead of carrying them into Pi's agent overrides.
+A line whose role is not in the current role table, such as `how critics`, is a
+retired role. Drop it.
 
 ### 3. Budget, map, and confirm
 
 Once per-child selection is available, ask for a reasoning budget. Name the current
 budget when the configuration records one. Offer these choices through the host's
-structured interaction tool when available:
+structured interaction tool when available; the root owns the question:
 
 - `unlimited`. Keep the current reasoning levels, including max where supported.
 - `large`. Target xhigh reasoning.
@@ -99,10 +105,11 @@ A budget is a reasoning preference, not a monetary limit.
 If both model inventory and per-child model selection are available, show every
 workflow role with its current concrete `provider/model-id` choice and supported
 reasoning level. Distinguish applied efforts from host defaults. Mark an
-explicit model absent from the live inventory as needing a replacement. Ask the
-user to accept or change the choices, offering only detected model IDs and
-`inherit-parent` when supported. Use the host's structured interaction tool when
-available; otherwise ask one focused question in normal conversation.
+explicit model absent from the live inventory as needing a replacement. Also list
+each line step 2 dropped. Ask the user to accept or change the choices, offering
+only detected model IDs and `inherit-parent` when supported. Use the host's
+structured interaction tool when available; otherwise the root asks one focused
+question in normal conversation.
 
 If the host exposes models but no task or subagent facility, stop model mapping
 with an explicit capability report. For native Pi, recommend
@@ -114,7 +121,7 @@ role can receive a different model in this session and do not present the
 portable defaults as an assignment or overwrite an existing role configuration
 with inactive aliases.
 
-For panel roles (`arena runners`, `architect runners`, and `interrogate reviewers`), one child runs per entry, so list length controls fan-out. `arena cross-judge pool` is a list of candidates for one judge. Arena selects one entry, preferring a different model family from the parent when available. Prefer diversity for judgment-sensitive panels. `swarm workers` is the default choice for every worker unless a race assigns a different choice per arm.
+For panel roles (`arena runners`, `architect runners`, and `interrogate reviewers`), one child runs per entry, so list length controls fan-out. `arena cross-judge pool` is a list of candidates for one judge. Arena selects one entry, preferring a different model family from the parent when returned resolved-model metadata demonstrates it. Prefer diversity for judgment-sensitive panels. `swarm workers` is the default choice for every worker unless a race or comparison assigns a different choice per arm.
 
 ### 4. Validate
 
@@ -124,7 +131,8 @@ facility. Validate each panel entry. Do not treat an unsupported budget as appli
 Role aliases pass only when the host task facility documents those aliases.
 `inherit-parent` passes only when the host can pass the current model to a child. If
 a selected explicit model is unavailable, stop and ask for a replacement. Never
-write a configuration that requires another host.
+write a configuration that requires another host. Never write a guessed vendor
+slug.
 
 ### 5. Write the configuration
 
@@ -137,7 +145,9 @@ arguments, add `<workflow role> reasoning: <effort>` entries. Panel reasoning li
 must match the model list in length and order, using `host-default` for entries
 without an explicit effort. Keep those entries out of model ID values. Use concrete
 detected model IDs in this shape. Replace every placeholder with a model the
-current host reported, and use `inherit-parent` only when the host supports it:
+current host reported, and use `inherit-parent` only when the host supports it.
+Panel examples below have three seats, matching current upstream defaults; keep a
+user's longer or shorter confirmed list:
 
 ```md
 # pstack role and model configuration
@@ -154,13 +164,13 @@ why investigators: <researcher-model>
 why synthesizer: <synthesizer-model>
 reflect tooling: <researcher-model>
 reflect judgment: <reviewer-model>
-reflect divergent: <designer-model>
+reflect divergent: <divergent-model>
 reflect synthesizer: <synthesizer-model>
-arena runners: <designer-model>, <planner-model>, <implementer-model>, inherit-parent
-arena cross-judge pool: <reviewer-model>, <planner-model>, <designer-model>, inherit-parent
+arena runners: <planner-model>, <reviewer-model>, inherit-parent
+arena cross-judge pool: <reviewer-model>, <planner-model>, inherit-parent
 swarm workers: <implementer-model>
-architect runners: <designer-model>, <planner-model>, <reviewer-model>, inherit-parent
-interrogate reviewers: <reviewer-model>, <planner-model>, <designer-model>, inherit-parent
+architect runners: <planner-model>, <reviewer-model>, inherit-parent
+interrogate reviewers: <reviewer-model>, <planner-model>, inherit-parent
 ```
 
 For Pi with `pi-subagents`, also preserve unrelated keys and update the project's
@@ -173,7 +183,7 @@ subagent names. Use this mapping unless the user chooses different agents:
 | `researcher` | `researcher` |
 | `implementer`, `mechanical` | `worker` |
 | `reviewer` | `reviewer` |
-| `planner`, `designer`, `synthesizer` | `oracle` |
+| `planner`, `synthesizer` | `oracle` |
 | `owner` | `delegate` |
 
 Write the selected IDs under `subagents.agentOverrides.<agent>.model`:
@@ -205,7 +215,8 @@ OpenCode agent names in the pstack role map. Preserve unrelated configuration.
 
 If a concrete configuration was written, tell the user the exact path and list
 the model IDs and applied reasoning efforts assigned to each role family. State
-any unsupported budget choices and any roles that retain host defaults. For Pi, name both `.pstack/config.md`
+any unsupported budget choices and any roles that retain host defaults. List any
+retired lines that were dropped. For Pi, name both `.pstack/config.md`
 and `.pi/settings.json`, and tell the user to run `/subagents-models` to inspect
 the live mapping. For OpenCode, name the `opencode.json` or `opencode.jsonc`
 path used. State that configuration does not create models, child agents,

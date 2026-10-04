@@ -35,9 +35,9 @@ Write one clear paragraph. If you're unsure about the intent, ask the user befor
 
 ## Step 3, Spawn Reviewers
 
-Launch all reviewers concurrently through the host's task facility. Use the `interrogate reviewers` panel from the portable pstack configuration when present, one reviewer per entry, extending or shrinking the Reviewer A/B/C/D labels to the configured entry count. Otherwise use a diverse host-supported panel drawn from `reviewer`, `planner`, `designer`, and `inherit-parent`.
+The root launches all reviewers concurrently through the host's task facility. Use the `interrogate reviewers` panel from `$PSTACK_CONFIG` when that variable is set, otherwise `.pstack/config.md`, one reviewer per entry, extending or shrinking the Reviewer A/B/C labels to the configured entry count. If that line is missing, select a diverse panel from the live host's child facility. Pass a per-item `model` only when the live task schema exposes that field and the value is in the live inventory.
 
-Each reviewer is read-only and receives the configured panel choice plus a standalone brief. If a configured choice is unavailable, use the closest live role or model exposed by the host and record the substitution; do not block the review. `inherit-parent` and `auto` mean to omit an explicit model choice.
+Each reviewer is read-only and receives a standalone brief with the same filled template. `auto` or `inherit-parent` means omit an explicit model when the host can pass the parent model to a child. If the host rejects a configured seat, honor its documented rejection and fallback policy and report the unfilled seat; do not guess a vendor family or substitute a default slug. Continue with the reviewers that actually launched, and never claim a requested model ran unless the host reported it. A missing child facility is a capability gap, not an interrogation.
 
 Read `references/reviewer-prompt.md` and fill in the template with:
 1. The stated intent

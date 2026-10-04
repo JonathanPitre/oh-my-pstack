@@ -23,7 +23,7 @@ Copy `references/decision-log-template.tsv` (the header row) to start a clean lo
 - **evidence.** A link or path that proves it: commit SHA, PR number, `file:line`, or an artifact, trace, or screenshot path. Never a paragraph.
 - **result.** The outcome or predicate state: `tests green`, `reverted`, `pixel-diff 0`, `INCONCLUSIVE`, `open`.
 
-An example, plain-spoken so a reviewer reads it at a glance. This is illustration only. Don't copy these rows into a real log.
+An example, plain-spoken so a reviewer reads it at a glance.
 
 ```
 ts	phase	decision	why	evidence	result
@@ -41,6 +41,8 @@ Use the helper `scripts/log.sh <logfile> <phase> <decision> <why> <evidence> <re
 
 Log decision points and checkpoints, not every action: a fork chosen, a unit completed with its verification result, a pivot or revert with its trigger, a blocker surfaced, a gate fixed. For loop runs, one row per iteration. Skip the trivial and self-evident.
 
+A run is one agent conversation, including its later turns and any summary of it. A pickup, a replacement agent, or a new chat starts a new run. When a run adds to a log that already has rows, its first row has phase `start`, and so does its first row after another run's `start` row. So a run that comes back to a log in a later turn first reads the log's last rows to see whether another run wrote since. A `start` row names the `ts` range of the rows before it that this run did not write, and its evidence names this run, such as its agent id. Use phase `start` for nothing else.
+
 ## Where it lives
 
 By default the log is a working artifact, not committed. Keep it at `decisions.tsv` in the work dir, or `.audit/<task-slug>.tsv` when several efforts run at once, and leave it out of git.
@@ -55,18 +57,17 @@ Commit it only when the work is ambitious enough that a reviewer needs the trail
 
 ## Audit the log against the transcript
 
-At the end of the run, before handing back, check the log told the truth. Use the host's active transcript resource, an explicit transcript directory, or `$PSTACK_TRANSCRIPTS_DIR`. Never scan another workspace or a global vendor transcript tree. If no transcript is available, record that limit and audit against the available decision trail and artifacts without claiming transcript coverage. Walk the log against what actually happened:
+At the end of the run, before handing back, check the log told the truth. Use the host's active transcript resource, an explicit transcript directory, or `$PSTACK_TRANSCRIPTS_DIR`. Never scan another workspace or a global vendor transcript tree. If no transcript is available, record that limit and audit against the available decision trail and artifacts without claiming transcript coverage. Walk this run's rows against what actually happened. Each stretch of them begins at one of this run's `start` rows, or at the first row if this run created the log, and ends at the next `start` row of another run:
 
-- Every row maps to a real action. Cut invented or aspirational entries.
-- Each row's evidence resolves and shows what the row claims.
+- Check that every row maps to a real decision or action.
+- Check that each row's evidence resolves and shows what the row claims.
 - A fork, pivot, or abandoned approach that shaped the work but isn't logged is a gap. Add it.
-- Drop padding.
 
-Fix the log, not the story. If the work diverged from what a row claims, the row is wrong.
+Correct the log, not the story. The audit never edits or removes a row, even an invented one. When a row records neither a real decision nor a real action, or its claim or evidence is wrong, add a row that supersedes it with what actually happened and a pointer that resolves. This audit does not check rows outside this run's stretches. If this run's own work shows one of them is wrong, supersede it like any wrong call.
 
 ## Cross-model review of the trail
 
-Before handing back, launch a canonical `reviewer` child on a different model family from the one that did the work when the host exposes model identity. Otherwise use a distinct reviewer role or the nearest independent review facility the host provides. If no independent child facility exists, report that limit instead of claiming cross-model review. Self-review is not a substitute. The reviewer reads the audit trail and the run's transcript when available, then flags what the user should pay attention to. Not a redo of the work, a scan for what's suboptimal or risky.
+Before handing back, the root launches a canonical `reviewer` child on a different model family from the one that did the work when returned resolved-model metadata demonstrates it. Otherwise use a distinct live-host reviewer role or the nearest independent review facility the host provides. Pass a per-item `model` only when the live task schema exposes that field. If the host rejects the chosen reviewer, honor its documented rejection and fallback policy and report the gap; do not guess a vendor family default. If no independent child facility exists, report that limit instead of claiming cross-model review. Self-review is not a substitute. The reviewer reads the audit trail and the run's transcript when available, then flags what the user should pay attention to. Not a redo of the work, a scan for what's suboptimal or risky.
 
 - Decisions logged with weak or absent evidence.
 - Verification steps skipped or claimed without proof in the transcript.

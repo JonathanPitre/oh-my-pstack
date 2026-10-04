@@ -4,7 +4,8 @@ import process from "node:process";
 
 const RULE =
 	"Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.";
-const LANES = /(?:parallel|multiple|ten) lanes?.* at the PR head/i;
+const LANES = /Ten lanes on `([^`<>]+)` at the PR head/;
+const PLACEHOLDER_MODEL = /host-configured role\/model/;
 const SUB_BLOCKS = [
 	"Depends on.",
 	"Files.",
@@ -17,7 +18,7 @@ const SUB_BLOCKS = [
 	"Merge.",
 ];
 const PROGRAM_H3 = ["Arm the program", "Spawn owners", "PR mechanics", "Verdict and merge", "Boot recipe"];
-const PROGRAM_MARKERS = ["durable goal", "git show origin/main:", /30[- ]minute/, "status message"];
+const PROGRAM_MARKERS = ["git show origin/main:", /(?:hourly|\/loop 1h)/, "previously unreported"];
 const HOW_TO_READ_MARKERS = [
 	"One box is one unit of work",
 	"names the evidence",
@@ -136,7 +137,9 @@ for (const pr of prSections) {
 
 	const live = block("Verify, live.");
 	if (live) {
-		if (!LANES.test(live.rest)) fail(live.n, `${pr.title}: Verify, live lacks a host-neutral lane declaration`);
+		const laneMatch = live.rest.match(LANES);
+		if (!laneMatch) fail(live.n, `${pr.title}: Verify, live lacks "Ten lanes on \`<swarm workers model>\` at the PR head" with a selected host-supported role or model filled in`);
+		else if (PLACEHOLDER_MODEL.test(laneMatch[1])) fail(live.n, `${pr.title}: Verify, live uses a placeholder model instead of a selected host-supported role or model`);
 		const lanes = boxes(live.lines).map((b) => ({ ...b, m: b.text.match(/^Lane (\d+)\. /) }));
 		const numbers = lanes.filter((b) => b.m).map((b) => Number(b.m[1])).sort((a, b) => a - b);
 		if (numbers.join(",") !== "1,2,3,4,5,6,7,8,9,10") fail(live.n, `${pr.title}: lanes are [${numbers.join(",")}], expected 1 to 10`);
