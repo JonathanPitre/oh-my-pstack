@@ -1,16 +1,19 @@
 #!/usr/bin/env node
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
-  mkdtemp,
+  chmod,
+  lstat,
   mkdir,
   readFile,
-  readdir,
+  mkdtemp,
+  rename,
   rm,
+  unlink,
   writeFile,
 } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 
 const root = resolve(
@@ -50,19 +53,144 @@ export function isProtectedPath(path) {
   );
 }
 
-async function filesUnder(directory) {
-  const files = [];
-  async function walk(current) {
-    for (const entry of await readdir(current, { withFileTypes: true })) {
-      if (entry.name === "node_modules") continue;
-      const path = join(current, entry.name);
-      if (entry.isDirectory()) await walk(path);
-      else files.push(path);
+async function inventory(lock, sourceRoot, revision) {
+  const entries = new Map();
+  for (const mapping of lock.sourceRoots) {
+    const output = execFileSync("git", [
+      "ls-tree", "-r", "-z", revision, "--", mapping.source,
+    ], { cwd: sourceRoot, encoding: "buffer" });
+    for (const record of output.toString("utf8").split("\0").filter(Boolean)) {
+      const tab = record.indexOf("\t");
+      const [mode, type, object] = record.slice(0, tab).split(" ");
+      const sourcePath = record.slice(tab + 1);
+      const suffix = sourcePath.slice(mapping.source.length + 1);
+      if (suffix.split("/").includes("node_modules")) continue;
+      const destination = `${mapping.destination}/${suffix}`;
+      if (entries.has(destination)) throw new Error(`Duplicate upstream destination mapping: ${destination}`);
+      if (!["100644", "100755"].includes(mode) || type !== "blob") {
+        throw new Error(`Unsupported upstream source type for ${destination}: ${mode} ${type}`);
+      }
+      const raw = execFileSync("git", ["show", `${revision}:${sourcePath}`], {
+        cwd: sourceRoot,
+        encoding: "buffer",
+      });
+      if (raw.includes(0)) throw new Error(`Binary upstream content is unsupported: ${destination}`);
+      const content = raw.toString("utf8");
+      if (!Buffer.from(content, "utf8").equals(raw)) throw new Error(`Invalid UTF-8 upstream content: ${destination}`);
+      entries.set(destination, { content: normalizeContent(content), sourceMode: mode, sourcePath });
     }
   }
-  await walk(directory);
-  return files;
+  return entries;
 }
+
+async function localFile(path) {
+  try {
+    const raw = await readFile(path);
+    if (raw.includes(0)) throw new Error(`Binary destination content is unsupported: ${path}`);
+    const content = raw.toString("utf8");
+    if (!Buffer.from(content, "utf8").equals(raw)) throw new Error(`Invalid UTF-8 destination content: ${path}`);
+    return content;
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function mergeAdaptedText(base, ours, theirs, scratchDirectory) {
+  const index = mergeAdaptedText.index++;
+  const paths = ["ours", "base", "theirs"].map((name) => join(scratchDirectory, `${index}-${name}`));
+  await Promise.all(paths.map((path, i) => writeFile(path, [ours, base, theirs][i])));
+  const result = spawnSync("git", ["merge-file", "--stdout", ...paths], { encoding: "utf8" });
+  if (result.error) throw result.error;
+  if (result.status === 0) return { content: result.stdout, conflict: false };
+  if (result.status > 0 && result.status <= 127) return { content: null, conflict: true };
+  throw new Error(result.stderr || `git merge-file failed with status ${result.status}`);
+}
+mergeAdaptedText.index = 0;
+
+async function validateDestination(destination) {
+  const fullPath = resolve(root, destination);
+  if (fullPath !== root && !fullPath.startsWith(`${root}${sep}`)) {
+    throw new Error(`Destination escapes target root: ${destination}`);
+  }
+  let current = root;
+  for (const part of destination.split("/")) {
+    current = join(current, part);
+    try {
+      const stat = await lstat(current);
+      if (stat.isSymbolicLink()) throw new Error(`Symlinked destination path: ${destination}`);
+      if (current !== fullPath && !stat.isDirectory()) throw new Error(`Non-directory destination ancestor: ${destination}`);
+    } catch (error) {
+      if (error.code === "ENOENT") break;
+      throw error;
+    }
+  }
+}
+
+async function planUpdate(lock, sourceRoot, commit) {
+  const dirtyPaths = git(["status", "--porcelain", "--untracked-files=all", "--",
+    ...lock.sourceRoots.map((mapping) => mapping.source)], sourceRoot);
+  if (dirtyPaths) throw Object.assign(new Error("source has uncommitted changes in managed paths"), { status: 2 });
+  try {
+    git(["cat-file", "-e", `${lock.commit}^{commit}`], sourceRoot);
+  } catch {
+    throw Object.assign(new Error(`baseline ${lock.commit} unavailable for comparison with ${commit}`), { status: 2 });
+  }
+  const [base, incoming] = await Promise.all([
+    inventory(lock, sourceRoot, lock.commit),
+    inventory(lock, sourceRoot, commit),
+  ]);
+  const operations = [];
+  const conflicts = [];
+  const scratch = await mkdtemp(join(tmpdir(), "pstack-merge-"));
+  try {
+    for (const path of new Set([...base.keys(), ...incoming.keys()])) {
+      await validateDestination(path);
+      const baseline = base.get(path)?.content ?? null;
+      const latest = incoming.get(path)?.content ?? null;
+      const local = await localFile(join(root, path));
+      let content;
+      if (isProtectedPath(path)) {
+        if (latest === baseline) continue;
+        if (local === latest) continue;
+        if (local === baseline) content = latest;
+        else if (local !== null && latest !== null && baseline !== null) {
+          const merged = await mergeAdaptedText(baseline, local, latest, scratch);
+          if (merged.conflict) {
+            conflicts.push({ path, reason: "overlapping text edits" });
+            continue;
+          }
+          content = merged.content;
+        } else {
+          conflicts.push({ path, reason: baseline === null ? "differing simultaneous additions" :
+            latest === null ? "upstream deletion versus local adaptation" : "local deletion versus upstream modification" });
+          continue;
+        }
+      } else if (latest === null) {
+        if (local === null) continue;
+        if (local !== baseline) {
+          conflicts.push({ path, reason: "upstream deletion versus locally modified file" });
+          continue;
+        }
+        content = null;
+      } else {
+        content = latest;
+      }
+      if (content !== local) operations.push({
+        path,
+        content,
+        sourceMode: isProtectedPath(path) && local !== null
+          ? null
+          : (incoming.get(path)?.sourceMode ?? base.get(path)?.sourceMode),
+      });
+    }
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+    mergeAdaptedText.index = 0;
+  }
+  return { operations, conflicts };
+}
+
 
 function parseArgs(argv) {
   const sourceIndex = argv.indexOf("--source");
@@ -98,84 +226,38 @@ async function sourceRepository(lock, sourceArg) {
   }
 }
 
-async function protectedChanges(lock, sourceRoot, commit) {
-  const dirtyPaths = git(
-    ["status", "--porcelain", "--untracked-files=all", "--",
-      ...lock.sourceRoots.map((mapping) => mapping.source)],
-    sourceRoot,
-  );
-  if (dirtyPaths) return ["source has uncommitted changes in managed paths"];
-  let changedPaths;
-  try {
-    changedPaths = git(
-      ["diff", "--name-only", "--no-renames", "-z", `${lock.commit}..HEAD`, "--",
-        ...lock.sourceRoots.map((mapping) => mapping.source)],
-      sourceRoot,
-    ).split("\0").filter(Boolean);
-  } catch {
-    return [`baseline ${lock.commit} unavailable for comparison with ${commit}`];
-  }
-  const changes = new Set();
-  for (const sourcePath of changedPaths) {
-    for (const mapping of lock.sourceRoots) {
-      const prefix = `${mapping.source}/`;
-      if (!sourcePath.startsWith(prefix)) continue;
-      const destination = `${mapping.destination}/${sourcePath.slice(prefix.length)}`;
-      if (isProtectedPath(destination)) changes.add(destination);
-    }
-  }
-  return [...changes];
-}
-
 async function applyUpdate(lock, sourceRoot, commit, dryRun) {
-  const conflicts = await protectedChanges(lock, sourceRoot, commit);
-  if (conflicts.length > 0) {
-    console.error("Upstream changed protected OMP-adapted files:");
-    for (const path of conflicts) console.error(`- ${path}`);
-    console.error("Review and merge those files manually before rerunning --apply.");
+  const { operations, conflicts } = await planUpdate(lock, sourceRoot, commit);
+  if (conflicts.length) {
+    console.error("Upstream update conflicts with local adaptations:");
+    for (const { path, reason } of conflicts) console.error(`- ${path}: ${reason}`);
+    console.error("Resolve conflicts manually before rerunning --apply.");
     return 2;
   }
-
-  const changed = [];
-  for (const mapping of lock.sourceRoots) {
-    const sourceDirectory = join(sourceRoot, mapping.source);
-    for (const sourceFile of await filesUnder(sourceDirectory)) {
-      const destination = join(
-        root,
-        mapping.destination,
-        relative(sourceDirectory, sourceFile),
-      );
-      const destinationKey = relative(root, destination);
-      if (isProtectedPath(destinationKey)) continue;
-      const next = normalizeContent(await readFile(sourceFile, "utf8"));
-      let current = null;
-      try {
-        current = await readFile(destination, "utf8");
-      } catch {
-        // New upstream file.
-      }
-      if (current === next) continue;
-      changed.push(destinationKey);
-      if (!dryRun) {
-        await mkdir(dirname(destination), { recursive: true });
-        await writeFile(destination, next);
-      }
-    }
-  }
-  if (changed.length === 0) {
-    console.log(`No managed skill changes for upstream ${commit}.`);
-  } else {
-    console.log(`${dryRun ? "Would update" : "Updated"} ${changed.length} managed files:`);
-    for (const path of changed) console.log(`- ${path}`);
+  for (const operation of operations) {
+    console.log(`${dryRun ? "Would" : ""} ${operation.content === null ? "delete" : "update"} ${operation.path}`);
   }
   if (!dryRun) {
-    await writeFile(
-      lockPath,
-      `${JSON.stringify({ ...lock, commit }, null, 2)}\n`,
-    );
+    for (const operation of operations) {
+      const path = join(root, operation.path);
+      if (operation.content === null) {
+        await unlink(path).catch((error) => { if (error.code !== "ENOENT") throw error; });
+      } else {
+        await mkdir(dirname(path), { recursive: true });
+        await writeFile(path, operation.content);
+        if (operation.sourceMode !== null) {
+          await chmod(path, operation.sourceMode === "100755" ? 0o755 : 0o644);
+        }
+      }
+    }
+    const temporary = join(dirname(lockPath), `.upstream.lock.${process.pid}.tmp`);
+    await writeFile(temporary, `${JSON.stringify({ ...lock, commit }, null, 2)}\n`);
+    await rename(temporary, lockPath);
   }
+  if (!operations.length) console.log(`No managed skill changes for upstream ${commit}.`);
   return 0;
 }
+
 
 export async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
@@ -206,7 +288,7 @@ if (resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
     process.exitCode = code;
   }).catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
+    process.exitCode = error?.status ?? 1;
   });
 }
 
