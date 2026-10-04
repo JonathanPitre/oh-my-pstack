@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: upstream-pstack-sync
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   sync:
@@ -20,7 +20,11 @@ jobs:
     steps:
       - name: Check out package
         uses: actions/checkout@v4
-
+        with:
+          ref: main
+      - id: base
+        name: Record validation base
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
@@ -44,15 +48,48 @@ jobs:
           bun test orch watch-pr
           bunx tsc --project skills/poteto-mode/scripts/watch-pr/tsconfig.json --noEmit --strict
 
-      - name: Open update pull request
+      - id: validated
+        name: Capture validated update tree
+        run: |
+          git add --all -- skills upstream.lock.json ':(exclude)**/node_modules/**'
+          echo "tree=$(git write-tree)" >> "$GITHUB_OUTPUT"
+      - id: update_pr
+        name: Open update pull request
         uses: peter-evans/create-pull-request@v7
         with:
+          add-paths: |
+            skills
+            upstream.lock.json
+            :(exclude)**/node_modules/**
           commit-message: "chore: sync upstream pstack"
           title: "chore: sync upstream pstack"
           body: |
             Automated update from the pinned authoritative Cursor pstack source.
 
-            The updater preserves OMP-owned adapters and fails before writing when
-            upstream changes a protected portability adaptation.
+            Adapted files are reconciled with a deterministic three-way merge;
+            the proposal is merged only after this workflow's validation passes.
           branch: automation/upstream-pstack
+          base: main
           delete-branch: true
+      - name: Merge validated update
+        if: steps.update_pr.outputs.pull-request-number != '' && steps.update_pr.outputs.pull-request-operation != 'closed'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.update_pr.outputs.pull-request-number }}
+          PR_HEAD_SHA: ${{ steps.update_pr.outputs.pull-request-head-sha }}
+          VALIDATED_TREE: ${{ steps.validated.outputs.tree }}
+          VALIDATED_BASE: ${{ steps.base.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --depth 1 origin automation/upstream-pstack
+          if [[ "$(git rev-parse FETCH_HEAD)" != "$PR_HEAD_SHA" || "$(git rev-parse 'FETCH_HEAD^{tree}')" != "$VALIDATED_TREE" ]]; then
+            echo "Update PR differs from validated tree." >&2
+            exit 1
+          fi
+          main_sha="$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq .object.sha)"
+          if [[ "$main_sha" != "$VALIDATED_BASE" ]]; then
+            echo "main changed during validation; rerun the sync." >&2
+            exit 1
+          fi
+          gh pr merge "$PR_NUMBER" --repo "$GH_REPO" --squash --match-head-commit "$PR_HEAD_SHA"

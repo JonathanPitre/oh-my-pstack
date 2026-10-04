@@ -43,12 +43,14 @@ The package's existing runtime adapter, Pi subagent prerequisite, OpenCode
 configuration, and project-local config path remain authoritative. Budget
 selection does not grant a host new models or delegation capabilities.
 
-The sync updater now rejects changes under protected prefixes and deletion of
-protected files before writing anything. Previously those changes could be
-missed while the upstream lock advanced. The regression tests exercise the CLI
-against actual Git fixtures and check that rejected updates preserve content
-and the lock. Local `--source` inputs must have clean managed paths so copied
-content matches the reviewed Git revision. Automatic deletion of unprotected files remains unsupported.
+The sync updater reconciles adapted files against the pinned baseline with a
+deterministic textual three-way merge. Overlapping edits and delete/modify
+conflicts stop the entire update before destination writes or lock advancement.
+Unadapted files continue to follow normalized upstream content, with locally
+modified files protected from upstream deletion. Local `--source` inputs must
+have clean managed paths so copied content matches the reviewed Git revision.
+The scheduled workflow validates the proposal before attempting a guarded
+squash merge; it does not enable GitHub native auto-merge.
 This refresh explicitly removes the two deleted upstream critique references.
 
 The bundled `orch frontier set` command still requires Graphite, as upstream
