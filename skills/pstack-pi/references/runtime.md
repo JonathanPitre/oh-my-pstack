@@ -24,17 +24,23 @@ unless the host reported it.
 | `researcher` | Source-verified external documentation and API research. |
 | `synthesizer` | Adjudicate frozen reports without changing their evidence. |
 | `implementer` | Bounded implementation or test changes with explicit ownership. |
-| `owner` | One coupled implementation session retained through its lifecycle. |
+| `owner` | Own one PR lifecycle. The role can outlive an individual session. |
 | `mechanical` | Fully specified low-judgment edits. |
 
 Map these roles to the live host's agent or task names. OMP's recommended mapping is
-`scout`, `designer`, `reviewer`, `security-reviewer`, `librarian`, `task`, and
-`sonic`. Claude Code and Codex may expose different names. The live inventory wins.
+`scout`, `designer` when available, `reviewer`, `security-reviewer`, `librarian` when
+available, `task`, and `sonic`. Unavailable names map to a supported `task` or `scout`
+brief. Claude Code and Codex may expose different names. The live inventory wins.
 
 Every child brief must stand alone. It must name its goal, role, writable scope,
 acceptance criteria, verification command, forbidden scope, and report format. A
 child does not spawn another child unless the host explicitly supports nested
 delegation and the active playbook requires it.
+
+Use a fresh session by default for new work, a fix round, a retry, and the next
+queue item. Retain or resume a session only when the work needs costly live state
+it still owns, such as uncommitted changes, its checkout, a running server,
+simulator, or watcher.
 
 ## Models
 
@@ -59,11 +65,15 @@ built-in agents map to pstack roles as follows: `scout` for `explorer` and
 `delegate` for an `owner`.
 
 Use concrete `provider/model-id` values only when the host exposes per-child model
-selection and the value was confirmed in the live inventory. Use role aliases only
-when the host explicitly documents a role-to-model mapping. `inherit-parent` means
-the current conversation's model only when the host can pass it to a child. A
-missing role entry means the host default. A panel is a list of role or model
-choices, and its size controls fan-out.
+selection and the value was confirmed in the live inventory. When the current task
+schema exposes a per-item `model` field, use it for a verified configured panel or
+role choice. When it does not, use the host's supported routing configuration rather
+than adding an unsupported field. Use role aliases only when the host explicitly
+documents a role-to-model mapping. `inherit-parent` means the current conversation's
+model only when the host can pass it to a child. A missing role entry means the host
+default. A panel is a list of role or model choices, and its size controls fan-out.
+Honor the host's explicit rejection and fallback policy. Report an unavailable
+requested choice instead of silently substituting a guessed model.
 
 When the host has models but no child delegation, do not write a role mapping that
 looks active. Report the capability gap and tell the user to switch Pi's single
@@ -122,15 +132,6 @@ OpenCode's built-in primary and subagents are the delegation surface. Use the
 host's `opencode.json` or `opencode.jsonc` model configuration and live agent
 inventory rather than assuming Pi's `pi-subagents` settings apply.
 
-OpenCode's native Agent Skills loader looks in `.opencode/skills/` for a project or
-`~/.config/opencode/skills/` globally. When installing this repository for
-OpenCode, copy the contents of this package's `skills/` directory into one of
-those locations. OpenCode loads a skill on demand through its native `skill`
-tool; it does not automatically scan an arbitrary cloned repository directory.
-OpenCode's built-in primary and subagents are the delegation surface. Use the
-host's `opencode.json` or `opencode.jsonc` model configuration and live agent
-inventory rather than assuming Pi's `pi-subagents` settings apply.
-
 ## Transcripts and history
 
 Transcript-dependent skills accept an explicit transcript directory or host history
@@ -141,9 +142,11 @@ does not require it.
 
 ## Long-running work and verification
 
-Use the host's durable goal, watcher, or loop facility when available. Otherwise keep
-the predicate and checkpoint in a project-local decision trail. A timed heartbeat is
-only a fallback. Re-arm a watcher after every state-changing wave.
+Use the host's durable goal, watcher, or loop facility when available. An hourly
+audit may be `/loop 1h` on hosts that expose it, or another scheduled tick the host
+actually supports. Otherwise keep the predicate and checkpoint in a project-local
+decision trail. A timed heartbeat is only a fallback. Re-arm a watcher after every
+state-changing wave. Post a status message only for previously unreported changes.
 
 The root coordinator owns user interaction, approvals, integration, and final
 verification. A worker report is evidence, not proof. The root must inspect artifacts

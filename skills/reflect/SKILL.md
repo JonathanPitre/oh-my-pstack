@@ -30,19 +30,21 @@ For each candidate, read the first JSONL line and check that `message.content[0]
 
 ### 2. Spawn three reviewers in parallel
 
-Launch three reviewer children concurrently through the host's task facility. Use the configured choices when present; otherwise use the canonical roles below. Grant each child read access to the transcript and any host tools needed for context lookups, but forbid file writes in the brief. If the host cannot combine read-only repository posture with external-tool access, preserve tool access and enforce no writes in the brief; the parent applies edits.
+The root launches three reviewer children concurrently through the host's task facility. Use the configured choices when present; otherwise map the canonical roles below through the live host inventory. Pass a per-item `model` only when the live task schema exposes that field and the value is in the live inventory. Leave the model unset for `auto` or `inherit-parent` when the host can pass the parent model to a child. If the host rejects a configured choice, honor its documented rejection and fallback policy and report the gap; do not guess a vendor family or substitute a default slug.
+
+Grant each child read access to the transcript and any host tools needed for context lookups, but forbid file writes in the brief. If the host cannot combine read-only repository posture with external-tool access, preserve tool access and enforce no writes in the brief; the parent applies edits. A missing child facility is a capability gap, not a completed reflect.
 
 | Lens | Configured choice / fallback role | Prompt template |
 |---|---|---|
 | Judgment | `reflect judgment`, else `reviewer` | `references/judgment-reviewer.md` |
 | Tooling | `reflect tooling`, else `researcher` | `references/tooling-reviewer.md` |
-| Divergent | `reflect divergent`, else `designer` | `references/divergent-reviewer.md` |
+| Divergent | `reflect divergent`, else a distinct live-host child not used for judgment or tooling | `references/divergent-reviewer.md` |
 
-Pass each template verbatim, substituting the transcript path or digest where marked. Reviewers return findings in their child reports.
+Pass each template verbatim, substituting the transcript path or digest where marked. Reviewers return findings in their child reports. Each reviewer lists every durable learning it finds; there is no 3-5 cap.
 
 ### 3. Synthesize
 
-Launch one `synthesizer` child, using the configured `reflect synthesizer` choice when present. Give it the host tools needed to spot-verify citations while forbidding repository writes in its standalone brief. Use `references/synthesizer.md` verbatim, with each reviewer's full output inlined where marked. The synthesizer returns a structured Accepted / Rejected / Backlog list.
+The root launches one `synthesizer` child, using the configured `reflect synthesizer` choice when present. Give it the host tools needed to spot-verify citations while forbidding repository writes in its standalone brief. Use `references/synthesizer.md` verbatim, with each reviewer's full output inlined where marked. The synthesizer returns a structured Accepted / Rejected / Backlog list.
 
 ### 4. Structural enforcement check
 
