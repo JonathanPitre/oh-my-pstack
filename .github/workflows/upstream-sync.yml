@@ -15,47 +15,62 @@ concurrency:
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - name: Check out package
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
       - id: base
         name: Record validation base
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version: 26.x
+          check-latest: true
+          package-manager-cache: false
 
-      - name: Apply safe upstream update
-        run: node scripts/sync-upstream.mjs --apply
+      - id: update
+        name: Apply upstream update and detect changes
+        run: |
+          node scripts/sync-upstream.mjs --apply
+          if [[ -n "$(git status --porcelain --untracked-files=all -- skills upstream.lock.json ':(exclude)**/node_modules/**')" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Verify package
+      - if: steps.update.outputs.changed == 'true'
+        name: Verify package
         run: npm run verify
 
-      - name: Test updater
+      - if: steps.update.outputs.changed == 'true'
+        name: Test updater
         run: npm run test:sync
 
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
+      - if: steps.update.outputs.changed == 'true'
+        name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
-      - name: Test bundled scripts
+      - if: steps.update.outputs.changed == 'true'
+        name: Test bundled scripts
         run: |
           bun install --cwd skills/poteto-mode/scripts --frozen-lockfile
           bun test orch watch-pr
-          bunx tsc --project skills/poteto-mode/scripts/watch-pr/tsconfig.json --noEmit --strict
+          bun run --cwd skills/poteto-mode/scripts typecheck
 
-      - id: validated
+      - if: steps.update.outputs.changed == 'true'
+        id: validated
         name: Capture validated update tree
         run: |
           git add --all -- skills upstream.lock.json ':(exclude)**/node_modules/**'
           echo "tree=$(git write-tree)" >> "$GITHUB_OUTPUT"
       - id: update_pr
+        if: steps.update.outputs.changed == 'true'
         name: Open update pull request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           add-paths: |
             skills
@@ -72,7 +87,7 @@ jobs:
           base: main
           delete-branch: true
       - name: Merge validated update
-        if: steps.update_pr.outputs.pull-request-number != '' && steps.update_pr.outputs.pull-request-operation != 'closed'
+        if: steps.update.outputs.changed == 'true' && steps.update_pr.outputs.pull-request-number != '' && steps.update_pr.outputs.pull-request-operation != 'closed'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}

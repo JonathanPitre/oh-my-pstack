@@ -168,11 +168,22 @@ The updater:
 
 1. Fetches the latest upstream revision.
 2. Normalizes known Cursor runtime bindings for portable hosts.
-3. Updates only upstream-owned files.
-4. Preserves OMP adapters and protected portability adaptations.
-5. Stops before writing if an adapted file changed upstream.
-6. Runs verification, updater tests, Bun tests, and strict TypeScript checking.
-7. Opens a pull request only after those checks pass.
+3. Reconciles adapted files against the pinned baseline with a three-way merge.
+4. Preserves local-only OMP adapters and files.
+5. Exits with code 2 before writing if edits overlap or deletion conflicts remain.
+6. Runs verification, updater tests, Bun tests, and strict TypeScript checking only
+   when the update changes managed files or the pin.
+7. Opens a pull request and squash-merges it only after validation and exact-tree,
+   PR-head, and unchanged-main checks pass.
+
+The workflow uses Ubuntu 26.04 and the latest Node 26 patch. Its JavaScript
+actions use Node 24 independently of the Node version selected for scripts.
+Action releases are pinned to commit hashes. Bun's existing package typecheck
+script uses the installed compiler rather than downloading one through `bunx`.
+
+Exit code 2 is a reconciliation rejection, not a Node or Ubuntu version error.
+Resolve the listed file conflicts manually before another update can advance
+the pin. Runtime upgrades do not resolve conflicting instructions.
 
 Run it locally:
 
