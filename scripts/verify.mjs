@@ -1,5 +1,5 @@
 import { readFile, readdir, stat } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const skillsRoot = join(root, "skills");
@@ -94,6 +94,19 @@ await collect(skillsRoot);
 
 for (const path of markdownFiles) {
   const source = await readFile(path, "utf8");
+  for (const match of source.matchAll(/skill:\/\/([a-z0-9-]+)(\/[^\s`"'<>()[\]#]*)?/gu)) {
+    const skillRoot = join(skillsRoot, match[1]);
+    const targetPath = resolve(skillRoot, match[2]?.slice(1) || "SKILL.md");
+    const suffix = relative(skillRoot, targetPath);
+    try {
+      if (isAbsolute(suffix) || suffix === ".." || suffix.startsWith(`..${sep}`)) {
+        throw new Error("target escapes skill directory");
+      }
+      if (!(await stat(targetPath)).isFile()) throw new Error("target is not a file");
+    } catch {
+      failures.push(`${relative(root, path)} references invalid ${match[0]}`);
+    }
+  }
   for (const match of source.matchAll(/\]\(([^)#][^)]*)\)/gu)) {
     const target = match[1].split("#", 1)[0];
     if (target === "" || /^[a-z]+[0-9]*$/u.test(target)) continue;
@@ -156,6 +169,10 @@ try {
   );
   if (codexManifest.name !== "pstack-pi" || codexManifest.skills !== "./skills/") {
     failures.push(".codex-plugin/plugin.json has incorrect package identity or skills path");
+  }
+  const manifestVersions = [packageManifest.version, claudeManifest.version, codexManifest.version];
+  if (new Set(manifestVersions).size !== 1) {
+    failures.push(`package and plugin manifests disagree on version: ${manifestVersions.join(", ")}`);
   }
   const claudeMarketplace = JSON.parse(
     await readFile(join(root, ".claude-plugin", "marketplace.json"), "utf8")

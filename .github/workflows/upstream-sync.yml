@@ -2,7 +2,7 @@ name: Sync upstream pstack
 
 on:
   schedule:
-    - cron: "17 4 * * *"
+    - cron: "17 */6 * * *"
   workflow_dispatch:
 
 permissions:
@@ -36,7 +36,7 @@ jobs:
         name: Apply upstream update and detect changes
         run: |
           node scripts/sync-upstream.mjs --apply
-          if [[ -n "$(git status --porcelain --untracked-files=all -- skills upstream.lock.json ':(exclude)**/node_modules/**')" ]]; then
+          if [[ -n "$(git status --porcelain --untracked-files=all -- skills upstream.lock.json package.json .claude-plugin/plugin.json .codex-plugin/plugin.json ':(exclude)**/node_modules/**')" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -44,7 +44,9 @@ jobs:
 
       - if: steps.update.outputs.changed == 'true'
         name: Verify package
-        run: npm run verify
+        run: |
+          npm run verify
+          npm run test:verify
 
       - if: steps.update.outputs.changed == 'true'
         name: Test updater
@@ -65,7 +67,7 @@ jobs:
         id: validated
         name: Capture validated update tree
         run: |
-          git add --all -- skills upstream.lock.json ':(exclude)**/node_modules/**'
+          git add --all -- skills upstream.lock.json package.json .claude-plugin/plugin.json .codex-plugin/plugin.json ':(exclude)**/node_modules/**'
           echo "tree=$(git write-tree)" >> "$GITHUB_OUTPUT"
       - id: update_pr
         if: steps.update.outputs.changed == 'true'
@@ -75,6 +77,9 @@ jobs:
           add-paths: |
             skills
             upstream.lock.json
+            package.json
+            .claude-plugin/plugin.json
+            .codex-plugin/plugin.json
             :(exclude)**/node_modules/**
           commit-message: "chore: sync upstream pstack"
           title: "chore: sync upstream pstack"
