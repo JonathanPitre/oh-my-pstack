@@ -45,6 +45,7 @@
   ],
   "scripts": {
     "verify": "node scripts/verify.mjs",
+    "test:verify": "node --test scripts/verify.test.mjs",
     "test:sync": "node --test scripts/sync-upstream.test.mjs",
     "test:install": "node --test --test-concurrency=1 scripts/install.test.mjs",
     "sync:check": "node scripts/sync-upstream.mjs --check",
