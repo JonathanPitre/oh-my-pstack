@@ -120,6 +120,66 @@ function decodeUtf8(raw, label) {
   return content;
 }
 
+export const PORTABLE_VERSION_PATHS = [
+  "package.json",
+  ".claude-plugin/plugin.json",
+  ".codex-plugin/plugin.json",
+];
+
+export function upstreamPluginManifestPath(lock) {
+  return `${lock.path}/.cursor-plugin/plugin.json`;
+}
+
+export function readUpstreamPluginVersion(lock, sourceRoot, commit) {
+  const rel = upstreamPluginManifestPath(lock);
+  try {
+    const raw = git(["show", `${commit}:${rel}`], sourceRoot);
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.version !== "string" || !parsed.version) {
+      throw new Error(`Upstream ${rel} at ${commit} is missing a string version field`);
+    }
+    return parsed.version;
+  } catch {
+    return null;
+  }
+}
+
+function readLocalPackageVersion() {
+  try {
+    const parsed = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+    return typeof parsed.version === "string" ? parsed.version : null;
+  } catch (error) {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+export async function syncPortableVersions(lock, sourceRoot, commit, dryRun) {
+  const upstreamVersion = readUpstreamPluginVersion(lock, sourceRoot, commit);
+  if (upstreamVersion === null) return { upstreamVersion: null, changed: false };
+
+  let changed = false;
+  for (const rel of PORTABLE_VERSION_PATHS) {
+    const abs = join(root, rel);
+    let parsed;
+    try {
+      parsed = JSON.parse(decodeUtf8(await readFile(abs), rel));
+    } catch (error) {
+      if (error.code === "ENOENT") continue;
+      throw error;
+    }
+    if (typeof parsed.version !== "string") {
+      throw new Error(`${rel} is missing a string version field`);
+    }
+    if (parsed.version === upstreamVersion) continue;
+    changed = true;
+    const next = `${JSON.stringify({ ...parsed, version: upstreamVersion }, null, 2)}\n`;
+    console.log(`${dryRun ? "Would update" : "update"} ${rel} version -> ${upstreamVersion}`);
+    if (!dryRun) await writeFile(abs, next);
+  }
+  return { upstreamVersion, changed };
+}
+
 function hasCommit(sourceRoot, commit) {
   try {
     git(["cat-file", "-e", `${commit}^{commit}`], sourceRoot);
@@ -406,7 +466,7 @@ function reportConflicts(conflicts) {
   console.error("Export a review with --export-review DIR, resolve each conflict, then rerun --apply --review DIR.");
 }
 
-async function applyOperations(lock, commit, operations, dryRun) {
+async function applyOperations(lock, sourceRoot, commit, operations, dryRun) {
   for (const operation of operations) {
     console.log(`${dryRun ? "Would" : ""} ${operation.content === null ? "delete" : "update"} ${operation.path}`);
   }
@@ -427,6 +487,7 @@ async function applyOperations(lock, commit, operations, dryRun) {
     await writeFile(temporary, `${JSON.stringify({ ...lock, commit }, null, 2)}\n`);
     await rename(temporary, lockPath);
   }
+  await syncPortableVersions(lock, sourceRoot, commit, dryRun);
   if (!operations.length) console.log(`No managed skill changes for upstream ${commit}.`);
   return 0;
 }
@@ -437,7 +498,7 @@ async function applyUpdate(lock, sourceRoot, commit, dryRun) {
     reportConflicts(conflicts);
     return 2;
   }
-  return applyOperations(lock, commit, operations, dryRun);
+  return applyOperations(lock, sourceRoot, commit, operations, dryRun);
 }
 
 async function writeSnapshot(directory, name, state) {
@@ -630,13 +691,14 @@ async function applyReviewedUpdate(lock, sourceRoot, commit, dryRun, reviewDir) 
   const originalMatch = sameStateMap(live, original) && lock.commit === manifest.lock.commit;
   const finalMatch = sameStateMap(live, final) && lock.commit === manifest.commit;
   if (finalMatch) {
+    await syncPortableVersions(lock, sourceRoot, manifest.commit, dryRun);
     console.log(`No managed skill changes for upstream ${manifest.commit}.`);
     return 0;
   }
   if (!originalMatch) {
     throw new Error("Review does not match original managed inputs or the reconstructed final managed state. Restore the original managed inputs in an isolated checkout or recreate a disposable worktree, then retry. The updater does not roll back mixed destination writes.");
   }
-  return applyOperations(lock, manifest.commit, reviewedOperations(comparisons, decisions), dryRun);
+  return applyOperations(lock, sourceRoot, manifest.commit, reviewedOperations(comparisons, decisions), dryRun);
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -675,11 +737,27 @@ export async function main(argv = process.argv.slice(2)) {
     const commit = git(["rev-parse", "HEAD"], source.path);
     console.log(`pinned=${lock.commit}`);
     console.log(`latest=${commit}`);
-    if (commit === lock.commit && args.mode === "check") {
+    const upstreamAtPin = readUpstreamPluginVersion(lock, source.path, lock.commit);
+    const localVersion = readLocalPackageVersion();
+    if (upstreamAtPin && localVersion) {
+      console.log(`package=${localVersion}`);
+      console.log(`upstream-version=${upstreamAtPin}`);
+    }
+    if (args.mode === "check") {
+      const behind = commit !== lock.commit;
+      const versionDrift = upstreamAtPin && localVersion && localVersion !== upstreamAtPin;
+      if (behind || versionDrift) {
+        if (!behind) {
+          console.log("Package version does not match the upstream pstack plugin at the pinned commit.");
+        }
+        return 10;
+      }
       console.log("Upstream is already pinned at the latest checked revision.");
+      if (upstreamAtPin && localVersion) {
+        console.log("Package version matches the upstream pstack plugin at the pin.");
+      }
       return 0;
     }
-    if (args.mode === "check") return 10;
     if (args.mode === "export-review") return await exportReview(lock, source.path, commit, args.exportReview);
     if (args.review) return await applyReviewedUpdate(lock, source.path, commit, args.dryRun, args.review);
     return await applyUpdate(lock, source.path, commit, args.dryRun);

@@ -5,7 +5,12 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 
-import { normalizeContent } from "./sync-upstream.mjs";
+import {
+  normalizeContent,
+  PORTABLE_VERSION_PATHS,
+  readUpstreamPluginVersion,
+  syncPortableVersions,
+} from "./sync-upstream.mjs";
 
 test("normalization removes supported Cursor bindings, including absolute paths", () => {
   const source = [
@@ -956,5 +961,86 @@ test("review default file:// acquisition replays only with fetchable original ba
     assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"), "utf8")).commit, incoming);
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+async function seedPortableVersions(target, version) {
+  await mkdir(join(target, ".claude-plugin"), { recursive: true });
+  await mkdir(join(target, ".codex-plugin"), { recursive: true });
+  await writeFile(join(target, "package.json"), `${JSON.stringify({ name: "pstack-pi", version }, null, 2)}\n`);
+  await writeFile(join(target, ".claude-plugin", "plugin.json"), `${JSON.stringify({ name: "pstack-pi", version }, null, 2)}\n`);
+  await writeFile(join(target, ".codex-plugin", "plugin.json"), `${JSON.stringify({ name: "pstack-pi", version, skills: "./skills/" }, null, 2)}\n`);
+}
+
+async function seedUpstreamPlugin(source, version) {
+  const directory = join(source, "pstack/.cursor-plugin");
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, "plugin.json"), `${JSON.stringify({ name: "pstack", version }, null, 2)}\n`);
+}
+
+test("apply copies the upstream plugin version into portable manifests", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "pstack-sync-version-"));
+  const source = join(fixture, "source");
+  const target = join(fixture, "target");
+  const git = (...args) => execFileSync("git", args, { cwd: source, encoding: "utf8" }).trim();
+  try {
+    await mkdir(join(source, "pstack/skills/managed"), { recursive: true });
+    await mkdir(join(target, "skills/managed"), { recursive: true });
+    await writeFile(join(source, "pstack/skills/managed/SKILL.md"), "same\n");
+    await writeFile(join(target, "skills/managed/SKILL.md"), "same\n");
+    await seedUpstreamPlugin(source, "1.2.3");
+    await seedPortableVersions(target, "1.2.2");
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "test@example.invalid");
+    git("config", "user.name", "pstack test");
+    git("add", ".");
+    git("commit", "-q", "-m", "baseline");
+    const baseline = git("rev-parse", "HEAD");
+    await writeFile(join(source, "pstack/.cursor-plugin/plugin.json"), `${JSON.stringify({ name: "pstack", version: "1.2.4" }, null, 2)}\n`);
+    git("add", ".");
+    git("commit", "-q", "-m", "bump upstream version");
+    const latest = git("rev-parse", "HEAD");
+    await writeFile(join(target, "upstream.lock.json"), `${JSON.stringify({
+      repository: "local",
+      ref: "main",
+      path: "pstack",
+      commit: baseline,
+      protectedPrefixes: [],
+      protectedPaths: [],
+      sourceRoots: [{ source: "pstack/skills", destination: "skills" }],
+    })}\n`);
+
+    const apply = spawnSync(process.execPath, [
+      new URL("./sync-upstream.mjs", import.meta.url).pathname,
+      "--apply",
+      "--source",
+      source,
+    ], { encoding: "utf8", env: { ...process.env, PSTACK_SYNC_ROOT: target } });
+
+    assert.equal(apply.status, 0, apply.stderr);
+    for (const rel of PORTABLE_VERSION_PATHS) {
+      assert.equal(JSON.parse(await readFile(join(target, rel), "utf8")).version, "1.2.4");
+    }
+    assert.equal(readUpstreamPluginVersion(JSON.parse(await readFile(join(target, "upstream.lock.json"), "utf8")), source, latest), "1.2.4");
+
+    const check = spawnSync(process.execPath, [
+      new URL("./sync-upstream.mjs", import.meta.url).pathname,
+      "--check",
+      "--source",
+      source,
+    ], { encoding: "utf8", env: { ...process.env, PSTACK_SYNC_ROOT: target } });
+    assert.equal(check.status, 0, check.stderr);
+
+    await writeFile(join(target, "package.json"), `${JSON.stringify({ name: "pstack-pi", version: "1.2.3" }, null, 2)}\n`);
+    const drift = spawnSync(process.execPath, [
+      new URL("./sync-upstream.mjs", import.meta.url).pathname,
+      "--check",
+      "--source",
+      source,
+    ], { encoding: "utf8", env: { ...process.env, PSTACK_SYNC_ROOT: target } });
+    assert.equal(drift.status, 10, drift.stderr);
+    assert.match(drift.stdout, /upstream-version=1\.2\.4/u);
+  } finally {
+    await rm(fixture, { recursive: true, force: true });
   }
 });

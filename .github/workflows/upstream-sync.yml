@@ -2,7 +2,7 @@ name: Sync upstream pstack
 
 on:
   schedule:
-    - cron: "17 */6 * * *"
+    - cron: "17 4 * * *"
   workflow_dispatch:
 
 permissions:
@@ -36,7 +36,7 @@ jobs:
         name: Apply upstream update and detect changes
         run: |
           node scripts/sync-upstream.mjs --apply
-          if [[ -n "$(git status --porcelain --untracked-files=all -- skills upstream.lock.json ':(exclude)**/node_modules/**')" ]]; then
+          if [[ -n "$(git status --porcelain --untracked-files=all -- skills upstream.lock.json package.json .claude-plugin/plugin.json .codex-plugin/plugin.json ':(exclude)**/node_modules/**')" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -65,7 +65,7 @@ jobs:
         id: validated
         name: Capture validated update tree
         run: |
-          git add --all -- skills upstream.lock.json ':(exclude)**/node_modules/**'
+          git add --all -- skills upstream.lock.json package.json .claude-plugin/plugin.json .codex-plugin/plugin.json ':(exclude)**/node_modules/**'
           echo "tree=$(git write-tree)" >> "$GITHUB_OUTPUT"
       - id: update_pr
         if: steps.update.outputs.changed == 'true'
@@ -75,6 +75,9 @@ jobs:
           add-paths: |
             skills
             upstream.lock.json
+            package.json
+            .claude-plugin/plugin.json
+            .codex-plugin/plugin.json
             :(exclude)**/node_modules/**
           commit-message: "chore: sync upstream pstack"
           title: "chore: sync upstream pstack"
@@ -108,3 +111,6 @@ jobs:
             exit 1
           fi
           gh pr merge "$PR_NUMBER" --repo "$GH_REPO" --squash --match-head-commit "$PR_HEAD_SHA"
+
+
+[You have received this identical output 3 times. Re-reading '/home/johndoe/Work/oh-my-pstack/.github/workflows/upstream-sync.yml:raw' will not change it — use a narrower selector (path:A-B), or proceed with the edit.]

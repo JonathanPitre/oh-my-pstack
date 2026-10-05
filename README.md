@@ -12,6 +12,19 @@ upstream workflow catalog, playbooks, principles, references, and verification
 scripts while replacing Cursor-only runtime assumptions with a host-neutral
 adapter.
 
+## Start here
+
+1. [Install the plugin for your host](#install).
+2. Start a fresh session and run `$setup-pstack`.
+3. Route substantial work through `$poteto-mode`, for example:
+
+   ```text
+   $poteto-mode add a small feature and prove it works end to end
+   ```
+
+The shared skills stay host-neutral. The adapter uses capabilities exposed by the
+active host and reports unavailable integrations instead of claiming they work.
+
 ## What is included
 
 - 50 upstream pstack skills and their supporting references.
@@ -61,6 +74,11 @@ load with `omp read skill://setup-pstack` and `omp read skill://poteto-mode`.
 For local development, link a checkout with
 `omp plugin link /absolute/path/to/oh-my-pstack`; alternatively run
 `omp --plugin-dir /absolute/path/to/oh-my-pstack`.
+
+Named skills use a flat namespace. Load `how` with `omp read skill://how` and
+`no-comments` with `omp read skill://no-comments`. A suffix addresses a file inside
+that skill, such as `skill://poteto-mode/playbooks/bug-fix.md`; it does not address
+a sibling skill.
 
 ### OpenCode
 
@@ -125,45 +143,16 @@ gemini skills list --all
 
 ### Updating an installed OMP package
 
-Upstream synchronization updates this repository through reviewed pull requests;
-it does not publish a release or update users' installations. Publishing a stable
-GitHub release is a separate step.
+Upstream synchronization updates this repository through reviewed pull requests.
+It does not publish releases or update users' installations.
 
 `omp plugin upgrade pstack-pi` re-resolves the Git or npm source/ref already
 recorded by OMP; it does not automatically check for updates at startup or on a
 schedule. A pinned tag remains pinned, while an unpinned branch is not limited to
 stable releases. `omp update` updates OMP itself, not this plugin.
 
-For stable-release-only automation, the recommended future setup is a user-level,
-persistent daily systemd timer. It should query
-`https://api.github.com/repos/JonathanPitre/oh-my-pstack/releases/latest`, accept
-only a published release that is neither draft nor prerelease, validate its tag,
-and install only when that tag differs from the last successfully installed tag:
-
-```bash
-omp plugin install "https://github.com/JonathanPitre/oh-my-pstack.git#<tag>"
-```
-
-Replace `<tag>` with an actual release tag; `v1.2.3` is illustrative, not a
-published release. No official releases currently exist, so a stable-only
-scheduler cannot install anything until one is published. Pass the validated
-tag as an argument to the direct OMP executable, not shell source. Update the success marker only
-after installation and native skill discovery succeed; leave it unchanged and
-report errors to the journal on failure. If there is no stable release, install
-nothing—never fall back to `main`. Apply updates between sessions and start a
-fresh OMP session afterward. Reinstallation can reset enablement and default
-feature selection, so automation must respect plugins intentionally disabled by
-the user.
-
-## Quick start
-
-Start substantial work with `poteto-mode`. Use `pstack-pi` when a workflow needs
-delegation or host-specific lifecycle behavior.
-
-All hosts share the same skill content. The runtime adapter maps canonical pstack
-roles to the capabilities actually exposed by the host. Missing integrations are
-reported honestly and fail closed; for example, Benny requires an available
-Slack/tracker/control adapter rather than pretending those tools exist.
+No stable releases are published yet, so stable-release-only updates are not
+available.
 
 ## First-time setup
 
@@ -211,11 +200,14 @@ The updater:
 2. Normalizes known Cursor runtime bindings for portable hosts.
 3. Updates only upstream-owned files.
 4. Preserves OMP adapters and protected portability adaptations.
-5. Stops before writing if an adapted file changed upstream, unless a bound review
+5. Sets `package.json`, `.claude-plugin/plugin.json`, and `.codex-plugin/plugin.json`
+   to the upstream `pstack` plugin version at the imported commit so the portable
+   package number tracks sync state with Cursor pstack.
+6. Stops before writing if an adapted file changed upstream, unless a bound review
    supplies an explicit per-conflict write or delete.
-6. Runs verification, updater tests, Bun tests, and strict TypeScript checking only
-   when the update changes managed files or the pin.
-7. Opens a pull request and squash-merges it only after validation and exact-tree,
+7. Runs verification, updater tests, Bun tests, and strict TypeScript checking only
+   when the update changes managed files, the pin, or the portable version.
+8. Opens a pull request and squash-merges it only after validation and exact-tree,
    PR-head, and unchanged-main checks pass.
 
 Skill links into upstream `pstack/docs/` are rewritten to public GitHub URLs
@@ -250,14 +242,16 @@ silently overwrites them. Ordinary clean updates stay planner-owned.
 
 ```bash
 npm run verify
+npm run test:verify
 npm run test:sync
 bun install --cwd skills/poteto-mode/scripts --frozen-lockfile
 bun test orch watch-pr
 bun run --cwd skills/poteto-mode/scripts typecheck
 ```
 
-`npm run verify` checks skill inventory, frontmatter, local references, manifests,
-the upstream lock, and forbidden vendor-specific runtime bindings.
+`npm run verify` checks skill inventory, frontmatter, local references, `skill://`
+targets, manifests, the upstream lock, and forbidden vendor-specific runtime
+bindings. Skill resource targets must resolve to files within their named skill.
 
 The separate installation release gate requires OMP, Pi, OpenCode, Claude Code,
 Codex, Gemini CLI, Git, and outbound package/GitHub access:
@@ -284,11 +278,35 @@ public Claude/Codex marketplace checks to pass. This gate is intentionally
 separate from upstream synchronization; it neither provisions hosts nor submits
 model prompts.
 
-## Host contract
+## Host support and install checks
 
-Read `skills/pstack-pi/references/runtime.md` before adapting a workflow to a new
-agent host. It defines canonical roles, capability mapping, configuration paths,
-transcript handling, interaction fallbacks, and verification ownership.
+The plugin uses each host's native skill loading path. Runtime behavior follows the
+host's live capabilities, not a fixed list of agent or model names.
+
+The coverage column lists cases in the install test suite. It does not report a
+recent test run.
+
+| Host | Install skills | Delegation and model configuration | `test:install` coverage |
+| --- | --- | --- | --- |
+| OMP | `omp install` or a local plugin link | Maps roles to capabilities exposed by OMP. | Yes |
+| Pi | `pi install` | Native Pi has no subagents. Optional `pi-subagents` adds child delegation and per-role model assignments. | Yes |
+| OpenCode | Copy skills into the project or user skill directory. | Uses native agents and model settings in `opencode.json` or `opencode.jsonc`. | Global and project |
+| Claude Code | Install from the Claude marketplace. | Maps roles to capabilities exposed by the active session. | Yes |
+| Codex | Install from the Codex marketplace. | Maps roles to capabilities exposed by the active session. | Yes |
+| Gemini CLI | Install the skills with `gemini skills install`. | Maps roles to capabilities exposed by the active session. | Yes |
+
+The `test:install` suite checks isolated installation, skill discovery, inventory
+where the host exposes it, repeat installation, and unchanged live configuration.
+It does not prove that every workflow or delegation path works in a live task. The
+runtime rules and host limits are documented in the
+[portable runtime contract](skills/pstack-pi/references/runtime.md).
+
+## Upstream compatibility
+
+Cursor pstack is the content source. The updater records the source revision,
+protects local adaptations, and requires review for conflicts. See the
+[upstream reconciliation design](docs/upstream-compatibility-design.md) for its
+review and stale-input rules.
 
 ## License and attribution
 
