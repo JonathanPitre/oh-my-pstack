@@ -139,7 +139,11 @@ export function readUpstreamPluginVersion(lock, sourceRoot, commit) {
   if (path !== rel || mode !== "100644" && mode !== "100755" || type !== "blob") {
     throw new Error(`Upstream ${rel} at ${commit} is not a regular file`);
   }
-  const parsed = JSON.parse(git(["show", `${commit}:${rel}`], sourceRoot));
+  const raw = execFileSync("git", ["show", `${commit}:${rel}`], {
+    cwd: sourceRoot,
+    encoding: "buffer",
+  });
+  const parsed = JSON.parse(decodeUtf8(raw, `upstream ${rel}`));
   if (typeof parsed.version !== "string" || !parsed.version) {
     throw new Error(`Upstream ${rel} at ${commit} is missing a string version field`);
   }

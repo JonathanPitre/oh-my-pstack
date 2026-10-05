@@ -1123,7 +1123,7 @@ for (const manifest of [".claude-plugin/plugin.json", ".codex-plugin/plugin.json
   });
 }
 
-for (const failure of ["missing", "invalid JSON", "missing version", "invalid version", "symlink"]) {
+for (const failure of ["missing", "invalid JSON", "invalid UTF-8", "missing version", "invalid version", "symlink"]) {
   test(`version guard rejects ${failure} upstream manifest before writes`, async () => {
     await versionFixture(async ({ source, target, manifest, git, baseline, cli, bump }) => {
       await bump();
@@ -1131,6 +1131,9 @@ for (const failure of ["missing", "invalid JSON", "missing version", "invalid ve
       if (failure === "missing" || failure === "symlink") await rm(path);
       if (failure === "symlink") await symlink("../version.json", path);
       if (failure === "invalid JSON") await writeFile(path, "{broken");
+      if (failure === "invalid UTF-8") {
+        await writeFile(path, Buffer.concat([Buffer.from('{"version":"1.2.'), Buffer.from([0xff]), Buffer.from('"}')]));
+      }
       if (failure === "missing version") await writeFile(path, "{}");
       if (failure === "invalid version") await writeFile(path, '{"version":123}');
       git("add", "."); git("commit", "-qm", "invalid manifest");
