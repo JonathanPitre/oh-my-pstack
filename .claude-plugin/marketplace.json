@@ -1,0 +1,12 @@
+{
+  "name": "oh-my-pstack",
+  "owner": {
+    "name": "JonathanPitre"
+  },
+  "plugins": [
+    {
+      "name": "pstack-pi",
+      "source": "./"
+    }
+  ]
+}

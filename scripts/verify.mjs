@@ -157,6 +157,52 @@ try {
   if (codexManifest.name !== "pstack-pi" || codexManifest.skills !== "./skills/") {
     failures.push(".codex-plugin/plugin.json has incorrect package identity or skills path");
   }
+  const claudeMarketplace = JSON.parse(
+    await readFile(join(root, ".claude-plugin", "marketplace.json"), "utf8")
+  );
+  if (
+    claudeMarketplace.name !== "oh-my-pstack" ||
+    claudeMarketplace.owner?.name !== "JonathanPitre" ||
+    claudeMarketplace.plugins?.length !== 1 ||
+    claudeMarketplace.plugins[0]?.name !== "pstack-pi" ||
+    claudeMarketplace.plugins[0]?.source !== "./"
+  ) {
+    failures.push(".claude-plugin/marketplace.json has incorrect marketplace or package identity");
+  }
+  const codexMarketplace = JSON.parse(
+    await readFile(join(root, ".agents", "plugins", "marketplace.json"), "utf8")
+  );
+  const codexPlugin = codexMarketplace.plugins?.[0];
+  if (
+    codexMarketplace.name !== "oh-my-pstack" ||
+    codexMarketplace.interface?.displayName !== "oh-my-pstack" ||
+    codexMarketplace.plugins?.length !== 1 ||
+    codexPlugin?.name !== "pstack-pi" ||
+    codexPlugin.source?.source !== "local" ||
+    codexPlugin.source?.path !== "./"
+  ) {
+    failures.push(".agents/plugins/marketplace.json has incorrect marketplace or package identity");
+  }
+  for (const path of [
+    join(root, ".claude-plugin", "plugin.json"),
+    join(root, ".codex-plugin", "plugin.json"),
+    skillsRoot,
+  ]) {
+    try {
+      await stat(path);
+    } catch {
+      failures.push(`marketplace source is missing ${relative(root, path)}`);
+    }
+  }
+  if (
+    !packageManifest.files?.includes(".agents/plugins") ||
+    !codexPlugin?.policy ||
+    codexPlugin.policy.installation !== "AVAILABLE" ||
+    codexPlugin.policy.authentication !== "ON_INSTALL" ||
+    codexPlugin.category !== "Productivity"
+  ) {
+    failures.push("Codex marketplace source or policy metadata is incomplete");
+  }
   const upstreamLock = JSON.parse(
     await readFile(join(root, "upstream.lock.json"), "utf8")
   );

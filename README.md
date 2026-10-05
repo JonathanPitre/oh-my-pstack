@@ -31,25 +31,16 @@ was used only as an early structural example; it is not an upstream source.
 
 ### Pi
 
-Install the public GitHub package:
-
 ```bash
-pi install https://github.com/shrimpwtf/oh-my-pstack
+pi install https://github.com/JonathanPitre/oh-my-pstack
 ```
 
-Start Pi in your project:
+Start Pi and confirm the package with `pi list`. Review the source before installing;
+Pi packages run with full system access. Update with `pi update --extensions`, or
+remove with `pi remove https://github.com/JonathanPitre/oh-my-pstack`.
 
-```bash
-pi
-```
-
-Use `pi list` to confirm the package. Use `pi update --extensions` to reconcile
-installed Git packages, or `pi remove https://github.com/shrimpwtf/oh-my-pstack`
-to remove it. Pi packages run with full system access; review the source before
-installing and keep the package pinned or update it deliberately.
-
-For parallel workers and per-role model assignments, install Pi's delegation
-extension too:
+For parallel workers and per-role model assignments, install Pi's separate
+delegation extension:
 
 ```bash
 pi install npm:pi-subagents
@@ -57,62 +48,112 @@ pi install npm:pi-subagents
 
 Restart Pi and run `/subagents-doctor`. The extension provides the `subagent` tool
 and built-in `scout`, `researcher`, `worker`, `reviewer`, `oracle`, and `delegate`
-agents. It is separate from pstack because native Pi does not include subagents.
+agents. Native Pi does not include subagents.
 
 ### OMP
 
-Install from GitHub:
-
 ```bash
-omp install https://github.com/shrimpwtf/oh-my-pstack
+omp install https://github.com/JonathanPitre/oh-my-pstack
 ```
 
-For local development, load the checkout directly:
-
-```bash
-omp --plugin-dir /path/to/oh-my-pstack
-```
+Confirm the enabled plugin with `omp plugin list --json`, then verify that the skills
+load with `omp read skill://setup-pstack` and `omp read skill://poteto-mode`.
+For local development, link a checkout with
+`omp plugin link /absolute/path/to/oh-my-pstack`; alternatively run
+`omp --plugin-dir /absolute/path/to/oh-my-pstack`.
 
 ### OpenCode
 
-OpenCode natively loads Agent Skills from `.opencode/skills/` in a project or
-`~/.config/opencode/skills/` globally. Install the repository and copy its skills
-into one of those discovery directories:
+OpenCode loads Agent Skills from `.opencode/skills/` in a project or
+`~/.config/opencode/skills/` globally. For global installation:
 
 ```bash
-git clone https://github.com/shrimpwtf/oh-my-pstack.git \
+git clone https://github.com/JonathanPitre/oh-my-pstack.git \
   ~/.local/share/oh-my-pstack
 mkdir -p ~/.config/opencode/skills
 cp -R ~/.local/share/oh-my-pstack/skills/. ~/.config/opencode/skills/
 ```
 
-Start OpenCode in your project. The skills appear through OpenCode's native
-`skill` tool; ask it to load `setup-pstack` or `poteto-mode` by name. To update,
-pull the repository and repeat the copy step:
+Confirm with `opencode debug skill`. To update, pull and repeat the copy:
 
 ```bash
 git -C ~/.local/share/oh-my-pstack pull --ff-only
 cp -R ~/.local/share/oh-my-pstack/skills/. ~/.config/opencode/skills/
 ```
 
-For project-local installation, use `.opencode/skills/` instead:
+For project-local installation:
 
 ```bash
-git clone https://github.com/shrimpwtf/oh-my-pstack.git .pstack-source
+git clone https://github.com/JonathanPitre/oh-my-pstack.git .pstack-source
 mkdir -p .opencode/skills
 cp -R .pstack-source/skills/. .opencode/skills/
 ```
 
-OpenCode already provides primary and subagents. Configure their models through
-your normal `opencode.json` or `opencode.jsonc` settings, then ask `setup-pstack`
-to map pstack roles to the agents your OpenCode installation exposes.
+Run `opencode debug skill` from that project. OpenCode already provides primary
+and subagents; configure their models through `opencode.json` or `opencode.jsonc`.
 
-### Claude Code and Codex
+### Claude Code
 
-Clone or download the repository, then add it through the host's local plugin
-workflow. Claude Code reads `.claude-plugin/plugin.json`; Codex reads
-`.codex-plugin/plugin.json`. If plugin installation is unavailable, point the
-host's Agent Skills configuration at the repository's `skills/` directory.
+```bash
+claude plugin marketplace add JonathanPitre/oh-my-pstack
+claude plugin install pstack-pi@oh-my-pstack
+claude plugin list --json
+claude plugin details pstack-pi
+```
+
+### Codex
+
+```bash
+codex plugin marketplace add JonathanPitre/oh-my-pstack
+codex plugin add pstack-pi@oh-my-pstack
+codex plugin list --json
+```
+
+After installation, Codex loads the plugin's skills through its app server and
+`skills/list`; start a fresh session to use them.
+
+### Gemini CLI
+
+Review the repository before granting consent: skills are trusted instructions
+that can influence the agent.
+
+```bash
+gemini skills install https://github.com/JonathanPitre/oh-my-pstack \
+  --scope user --path skills --consent
+gemini skills list --all
+```
+
+### Updating an installed OMP package
+
+Upstream synchronization updates this repository through reviewed pull requests;
+it does not publish a release or update users' installations. Publishing a stable
+GitHub release is a separate step.
+
+`omp plugin upgrade pstack-pi` re-resolves the Git or npm source/ref already
+recorded by OMP; it does not automatically check for updates at startup or on a
+schedule. A pinned tag remains pinned, while an unpinned branch is not limited to
+stable releases. `omp update` updates OMP itself, not this plugin.
+
+For stable-release-only automation, the recommended future setup is a user-level,
+persistent daily systemd timer. It should query
+`https://api.github.com/repos/JonathanPitre/oh-my-pstack/releases/latest`, accept
+only a published release that is neither draft nor prerelease, validate its tag,
+and install only when that tag differs from the last successfully installed tag:
+
+```bash
+omp plugin install "https://github.com/JonathanPitre/oh-my-pstack.git#<tag>"
+```
+
+Replace `<tag>` with an actual release tag; `v1.2.3` is illustrative, not a
+published release. No official releases currently exist, so a stable-only
+scheduler cannot install anything until one is published. Pass the validated
+tag as an argument to the direct OMP executable, not shell source. Update the success marker only
+after installation and native skill discovery succeed; leave it unchanged and
+report errors to the journal on failure. If there is no stable release, install
+nothing—never fall back to `main`. Apply updates between sessions and start a
+fresh OMP session afterward. Reinstallation can reset enablement and default
+feature selection, so automation must respect plugins intentionally disabled by
+the user.
 
 ## Quick start
 
@@ -217,6 +258,31 @@ bun run --cwd skills/poteto-mode/scripts typecheck
 
 `npm run verify` checks skill inventory, frontmatter, local references, manifests,
 the upstream lock, and forbidden vendor-specific runtime bindings.
+
+The separate installation release gate requires OMP, Pi, OpenCode, Claude Code,
+Codex, Gemini CLI, Git, and outbound package/GitHub access:
+
+```bash
+npm run test:install
+PSTACK_INSTALL_SOURCE=https://github.com/JonathanPitre/oh-my-pstack npm run test:install
+npm pack --dry-run --json --ignore-scripts
+```
+
+The first run installs an isolated copy of this checkout; the second uses the
+public repository without local overlays. A local directory can also be supplied
+as `PSTACK_INSTALL_SOURCE`. Each host receives a disposable HOME/project and
+temporary XDG roots. The suite checks absence before installation, native skill
+discovery, the installed skill inventory where exposed, and repeat installation;
+missing hosts and discovery failures fail rather than skip.
+
+Use `PSTACK_OMP_BIN`, `PSTACK_PI_BIN`, `PSTACK_OPENCODE_BIN`, `PSTACK_CLAUDE_BIN`,
+`PSTACK_CODEX_BIN`, and `PSTACK_GEMINI_BIN` to select direct installed executables.
+Avoid tool-manager wrappers that change global configuration. Each test reports
+its executable, version, and source, and checks live registration/configuration
+files remain unchanged. Publish the candidate catalogs before expecting the
+public Claude/Codex marketplace checks to pass. This gate is intentionally
+separate from upstream synchronization; it neither provisions hosts nor submits
+model prompts.
 
 ## Host contract
 

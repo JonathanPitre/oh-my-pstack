@@ -1,0 +1,20 @@
+{
+  "name": "oh-my-pstack",
+  "interface": {
+    "displayName": "oh-my-pstack"
+  },
+  "plugins": [
+    {
+      "name": "pstack-pi",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
