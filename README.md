@@ -191,8 +191,8 @@ project. Read `skills/setup-pstack/SKILL.md` for the complete setup contract.
 ## Automatic upstream updates
 
 `.github/workflows/upstream-sync.yml` checks the original pstack `main` branch
-every day at 04:17 UTC and can also be started manually. The pinned baseline lives
-in `upstream.lock.json`.
+every six hours at minute 17 and can also be started manually. The pinned baseline
+lives in `upstream.lock.json`.
 
 The updater:
 
