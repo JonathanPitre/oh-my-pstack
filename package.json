@@ -1,6 +1,6 @@
 {
   "name": "pstack-pi",
-  "version": "0.15.2-pi.1",
+  "version": "0.15.13",
   "description": "Portable pstack engineering workflows and Agent Skills for Pi, OMP, OpenCode, Claude Code, and Codex.",
   "type": "module",
   "keywords": [
@@ -45,6 +45,7 @@
   ],
   "scripts": {
     "verify": "node scripts/verify.mjs",
+    "test:verify": "node --test scripts/verify.test.mjs",
     "test:sync": "node --test scripts/sync-upstream.test.mjs",
     "test:install": "node --test --test-concurrency=1 scripts/install.test.mjs",
     "sync:check": "node scripts/sync-upstream.mjs --check",
