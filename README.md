@@ -210,6 +210,11 @@ The updater:
 8. Opens a pull request and squash-merges it only after validation and exact-tree,
    PR-head, and unchanged-main checks pass.
 
+`npm run sync:check` compares the upstream revision and all three version
+manifests. Matching version numbers alone do not prove revision parity because
+upstream commits can share a version. Missing, malformed, or symlinked manifests
+stop synchronization. The pin advances only after all update writes succeed.
+
 Skill links into upstream `pstack/docs/` are rewritten to public GitHub URLs
 pinned to the imported commit because this package does not bundle those docs.
 The updater checks that each target exists in that upstream revision before

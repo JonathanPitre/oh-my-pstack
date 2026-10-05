@@ -44,7 +44,9 @@ jobs:
 
       - if: steps.update.outputs.changed == 'true'
         name: Verify package
-        run: npm run verify
+        run: |
+          npm run verify
+          npm run test:verify
 
       - if: steps.update.outputs.changed == 'true'
         name: Test updater
@@ -111,6 +113,3 @@ jobs:
             exit 1
           fi
           gh pr merge "$PR_NUMBER" --repo "$GH_REPO" --squash --match-head-commit "$PR_HEAD_SHA"
-
-
-[You have received this identical output 3 times. Re-reading '/home/johndoe/Work/oh-my-pstack/.github/workflows/upstream-sync.yml:raw' will not change it — use a narrower selector (path:A-B), or proceed with the edit.]

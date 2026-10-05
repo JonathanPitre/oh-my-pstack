@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -9,7 +9,6 @@ import {
   normalizeContent,
   PORTABLE_VERSION_PATHS,
   readUpstreamPluginVersion,
-  syncPortableVersions,
 } from "./sync-upstream.mjs";
 
 test("normalization removes supported Cursor bindings, including absolute paths", () => {
@@ -55,6 +54,8 @@ for (const missingGuide of [false, true]) {
       await mkdir(join(source, "pstack/skills/help/references"), { recursive: true });
       await mkdir(join(source, "pstack/docs/guide"), { recursive: true });
       await mkdir(target);
+      await seedUpstreamPlugin(source, "1.2.3");
+      await seedPortableVersions(target, "1.2.3");
       await writeFile(join(source, "pstack/skills/help/SKILL.md"), "[Reference](references/details.md)\n");
       await writeFile(join(source, "pstack/skills/help/references/details.md"), "Details\n");
       execFileSync("git", ["init", "-q", "-b", "main"], { cwd: source });
@@ -95,7 +96,9 @@ for (const missingGuide of [false, true]) {
         assert.notEqual(result.status, 0, "missing upstream docs must not become unchecked external links");
         assert.match(result.stderr, /Missing upstream documentation/u);
         assert.equal(await readFile(join(target, "upstream.lock.json"), "utf8"), originalLock);
-        assert.deepEqual(await readdir(target), ["upstream.lock.json"]);
+        assert.deepEqual(await readdir(target), [
+          ".claude-plugin", ".codex-plugin", "package.json", "upstream.lock.json",
+        ]);
         return;
       }
       assert.equal(result.status, 0, result.stderr);
@@ -120,6 +123,8 @@ test("apply reconciles independent edits in adapted files", async () => {
   const target = join(fixture, "target");
   try {
     await mkdir(join(source, "pstack/skills/adapted"), { recursive: true });
+    await seedUpstreamPlugin(source, "1.2.3");
+    await seedPortableVersions(target, "1.2.3");
     await mkdir(join(target, "skills/adapted"), { recursive: true });
     execFileSync("git", ["init", "-q"], { cwd: source });
     execFileSync("git", ["config", "user.email", "test@example.invalid"], { cwd: source });
@@ -163,6 +168,7 @@ test("apply reconciles independent edits in adapted files", async () => {
     await writeFile(join(target, "upstream.lock.json"), JSON.stringify({
       repository: "fixture",
       ref: "main",
+      path: "pstack",
       commit: pinned,
       sourceRoots: [{ source: "pstack/skills", destination: "skills" }],
       protectedPaths: [],
@@ -222,6 +228,8 @@ for (const scenario of ["divergent edit", "add/add", "upstream delete/local edit
       await mkdir(join(source, "pstack/skills/public"), { recursive: true });
       await mkdir(join(target, "skills/private"), { recursive: true });
       await mkdir(join(target, "skills/public"), { recursive: true });
+      await seedUpstreamPlugin(source, "1.2.3");
+      await seedPortableVersions(target, "1.2.3");
       await writeFile(join(source, sourcePath), "base\n");
       await writeFile(join(source, "pstack", managedPath), "managed base\n");
       git("init", "-q", "-b", "main");
@@ -249,7 +257,7 @@ for (const scenario of ["divergent edit", "add/add", "upstream delete/local edit
       await writeFile(join(target, managedPath), "managed base\n");
       if (scenario === "add/add") await writeFile(join(target, "skills/private/new.md"), "local addition\n");
       const originalLock = JSON.stringify({
-        repository: "fixture", ref: "main", commit: baseline,
+        repository: "fixture", ref: "main", path: "pstack", commit: baseline,
         sourceRoots: [{ source: "pstack/skills", destination: "skills" }],
         protectedPaths: [], protectedPrefixes: ["skills/private/"],
       });
@@ -297,6 +305,8 @@ test("apply rejects symlinked destinations before changing any files", async () 
   try {
     await mkdir(join(source, "pstack/skills/public"), { recursive: true });
     await mkdir(join(target, "skills"), { recursive: true });
+    await seedUpstreamPlugin(source, "1.2.3");
+    await seedPortableVersions(target, "1.2.3");
     await mkdir(external);
     await writeFile(join(source, "pstack/skills/public/a.md"), "base\n");
     execFileSync("git", ["init", "-q", "-b", "main"], { cwd: source });
@@ -312,7 +322,7 @@ test("apply rejects symlinked destinations before changing any files", async () 
     await writeFile(join(external, "sentinel"), "untouched\n");
     await symlink(external, join(target, "skills/public"));
     const lock = JSON.stringify({
-      repository: "fixture", ref: "main", commit: baseline,
+      repository: "fixture", ref: "main", path: "pstack", commit: baseline,
       sourceRoots: [{ source: "pstack/skills", destination: "skills" }],
       protectedPaths: [], protectedPrefixes: [],
     });
@@ -345,6 +355,8 @@ for (const scenario of ["clean addition", "clean modification", "unchanged upstr
       await mkdir(join(target, "skills/private"), { recursive: true });
       await mkdir(join(target, "skills/public"), { recursive: true });
       await writeFile(join(source, "pstack/skills/public/common.md"), "common base\n");
+      await seedUpstreamPlugin(source, "1.2.3");
+      await seedPortableVersions(target, "1.2.3");
       await writeFile(join(target, "skills/public/common.md"), "common base\n");
       if (scenario !== "clean addition") await writeFile(sourceFile, "base\n");
       git("init", "-q", "-b", "main");
@@ -364,7 +376,7 @@ for (const scenario of ["clean addition", "clean modification", "unchanged upstr
       if (scenario === "unchanged upstream") await writeFile(destination, "local adaptation\n");
       else if (scenario !== "clean addition") await writeFile(destination, "base\n");
       const lock = JSON.stringify({
-        repository: "fixture", ref: "main", commit: baseline,
+        repository: "fixture", ref: "main", path: "pstack", commit: baseline,
         sourceRoots: [{ source: "pstack/skills", destination: "skills" }],
         protectedPaths: [], protectedPrefixes: ["skills/private/"],
       });
@@ -406,6 +418,8 @@ test("apply updates an upstream-owned file and advances the lock", async () => {
       join(source, "pstack/automations/benny/skills/setup-benny/SKILL.md"),
       "---\nname: setup-benny\ndescription: protected\n---\n",
     );
+    await seedUpstreamPlugin(source, "1.2.3");
+    await seedPortableVersions(target, "1.2.3");
     execFileSync("git", ["init", "-q", "-b", "main"], { cwd: source });
     execFileSync("git", ["config", "user.email", "test@example.invalid"], { cwd: source });
     execFileSync("git", ["config", "user.name", "pstack test"], { cwd: source });
@@ -483,6 +497,8 @@ for (const change of ["prefix edit", "ordinary deletion", "missing baseline", "d
           await writeFile(file, "baseline content\n");
         }
       }
+      await seedUpstreamPlugin(source, "1.2.3");
+      await seedPortableVersions(target, "1.2.3");
       git("init", "-q", "-b", "main");
       git("config", "user.email", "test@example.invalid");
       git("config", "user.name", "pstack test");
@@ -508,6 +524,7 @@ for (const change of ["prefix edit", "ordinary deletion", "missing baseline", "d
       const originalLock = `${JSON.stringify({
         repository: "local",
         ref: "main",
+        path: "pstack",
         commit: change === "missing baseline" ? "0".repeat(40) : baseline,
         protectedPrefixes: change === "protected deletion" ? [] : ["skills/private/"],
         protectedPaths: change === "protected deletion" ? [protectedPath] : [],
@@ -550,6 +567,8 @@ for (const failure of ["source symlink", "binary content", "invalid UTF-8", "inv
       await mkdir(join(target, "skills/public"), { recursive: true });
       const originalContent = failure === "binary content" ? Buffer.from([0, 255])
         : failure === "invalid UTF-8" ? Buffer.from([0xff]) : Buffer.from("baseline\n");
+      await seedUpstreamPlugin(source, "1.2.3");
+      await seedPortableVersions(target, "1.2.3");
       await writeFile(join(source, "pstack/skills/public/managed.md"), originalContent);
       if (failure === "source symlink") await symlink("managed.md", join(source, "pstack/skills/public/link.md"));
       execFileSync("git", ["init", "-q", "-b", "main"], { cwd: source });
@@ -565,7 +584,7 @@ for (const failure of ["source symlink", "binary content", "invalid UTF-8", "inv
       await writeFile(join(target, "skills/public/managed.md"), targetContent);
       const mapping = { source: "pstack/skills", destination: "skills" };
       const lock = JSON.stringify({
-        repository: "fixture", ref: "main", commit: baseline,
+        repository: "fixture", ref: "main", path: "pstack", commit: baseline,
         sourceRoots: failure === "duplicate destination" ? [mapping, mapping] : [mapping],
         protectedPaths: [], protectedPrefixes: [],
       });
@@ -598,6 +617,8 @@ test("apply repairs drift only in upstream-managed files at the same pin", async
   try {
     await mkdir(join(source, "pstack/skills/managed"), { recursive: true });
     await mkdir(join(target, "skills/managed"), { recursive: true });
+    await seedUpstreamPlugin(source, "1.2.3");
+    await seedPortableVersions(target, "1.2.3");
     await writeFile(join(source, "pstack/skills/managed/SKILL.md"), "upstream content\n");
     await writeFile(join(target, "skills/managed/SKILL.md"), "locally edited\n");
     await writeFile(join(target, "skills/my-local-skill.md"), "local-only content\n");
@@ -639,6 +660,8 @@ test("apply advances the pin when a newer commit has no managed content changes"
   }).trim();
   try {
     await mkdir(join(source, "pstack/skills/managed"), { recursive: true });
+    await seedUpstreamPlugin(source, "1.2.3");
+    await seedPortableVersions(target, "1.2.3");
     await mkdir(join(target, "skills/managed"), { recursive: true });
     await writeFile(join(source, "pstack/skills/managed/SKILL.md"), "same content\n");
     await writeFile(join(target, "skills/managed/SKILL.md"), "same content\n");
@@ -687,6 +710,8 @@ async function reviewFixture(run) {
     await writeFile(join(directory, path), text);
   };
   try {
+    await seedUpstreamPlugin(source, "1.2.3");
+    await seedPortableVersions(target, "1.2.3");
     await put(source, "pstack/skills/private/a.md", "base\n");
     await put(source, "pstack/skills/public/a.md", "clean base\n");
     await put(target, "skills/private/a.md", "local\n");
@@ -700,7 +725,7 @@ async function reviewFixture(run) {
     await put(source, "pstack/skills/public/a.md", "clean incoming\n");
     git("add", "."); git("commit", "-qm", "incoming");
     const lock = JSON.stringify({
-      repository: "fixture", ref: "main", commit: baseline,
+      repository: "fixture", ref: "main", path: "pstack", commit: baseline,
       sourceRoots: [{ source: "pstack/skills", destination: "skills" }],
       protectedPaths: [], protectedPrefixes: ["skills/private/"],
     });
@@ -917,6 +942,8 @@ test("review default file:// acquisition replays only with fetchable original ba
     await writeFile(join(root, path), text);
   };
   try {
+    await seedUpstreamPlugin(source, "1.2.3");
+    await seedPortableVersions(target, "1.2.3");
     await put(source, "pstack/skills/private/a.md", "base\n");
     await put(source, "pstack/skills/public/a.md", "clean base\n");
     await put(target, "skills/private/a.md", "local\n");
@@ -934,7 +961,7 @@ test("review default file:// acquisition replays only with fetchable original ba
     const incoming = execFileSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8" }).trim();
     execFileSync("git", ["clone", "--bare", "-q", source, origin]);
     await writeFile(join(target, "upstream.lock.json"), JSON.stringify({
-      repository: `file://${origin}`, ref: "main", commit: baseline,
+      repository: `file://${origin}`, ref: "main", path: "pstack", commit: baseline,
       sourceRoots: [{ source: "pstack/skills", destination: "skills" }],
       protectedPaths: [], protectedPrefixes: ["skills/private/"],
     }));
@@ -965,6 +992,7 @@ test("review default file:// acquisition replays only with fetchable original ba
 });
 
 async function seedPortableVersions(target, version) {
+  await mkdir(target, { recursive: true });
   await mkdir(join(target, ".claude-plugin"), { recursive: true });
   await mkdir(join(target, ".codex-plugin"), { recursive: true });
   await writeFile(join(target, "package.json"), `${JSON.stringify({ name: "pstack-pi", version }, null, 2)}\n`);
@@ -1043,4 +1071,126 @@ test("apply copies the upstream plugin version into portable manifests", async (
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }
+});
+
+async function versionFixture(run) {
+  const directory = await mkdtemp(join(tmpdir(), "pstack-version-guard-"));
+  const source = join(directory, "source");
+  const target = join(directory, "target");
+  const manifest = "pstack/.cursor-plugin/plugin.json";
+  const git = (...args) => execFileSync("git", args, { cwd: source, encoding: "utf8" }).trim();
+  try {
+    await mkdir(join(source, "pstack/skills/managed"), { recursive: true });
+    await mkdir(join(target, "skills/managed"), { recursive: true });
+    await writeFile(join(source, "pstack/skills/managed/SKILL.md"), "baseline\n");
+    await writeFile(join(target, "skills/managed/SKILL.md"), "baseline\n");
+    await seedUpstreamPlugin(source, "1.2.3");
+    await seedPortableVersions(target, "1.2.3");
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "test@example.invalid");
+    git("config", "user.name", "pstack test");
+    git("add", ".");
+    git("commit", "-qm", "baseline");
+    const baseline = git("rev-parse", "HEAD");
+    const lock = {
+      repository: "local", ref: "main", path: "pstack", commit: baseline,
+      protectedPrefixes: [], protectedPaths: [],
+      sourceRoots: [{ source: "pstack/skills", destination: "skills" }],
+    };
+    await writeFile(join(target, "upstream.lock.json"), JSON.stringify(lock));
+    const cli = (...args) => spawnSync(process.execPath, [
+      new URL("./sync-upstream.mjs", import.meta.url).pathname, ...args, "--source", source,
+    ], { encoding: "utf8", env: { ...process.env, PSTACK_SYNC_ROOT: target } });
+    const bump = async () => {
+      await seedUpstreamPlugin(source, "1.2.4");
+      await writeFile(join(source, "pstack/skills/managed/SKILL.md"), "incoming\n");
+      git("add", "."); git("commit", "-qm", "incoming");
+    };
+    await run({ directory, source, target, manifest, git, baseline, lock, cli, bump });
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+for (const manifest of [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]) {
+  test(`version guard detects drift in ${manifest}`, async () => {
+    await versionFixture(async ({ target, cli }) => {
+      await writeFile(join(target, manifest), JSON.stringify({ name: "pstack-pi", version: "9.9.9" }));
+      const result = cli("--check");
+      assert.equal(result.status, 10, result.stderr || result.stdout);
+      assert.equal(JSON.parse(await readFile(join(target, manifest), "utf8")).version, "9.9.9");
+    });
+  });
+}
+
+for (const failure of ["missing", "invalid JSON", "missing version", "invalid version", "symlink"]) {
+  test(`version guard rejects ${failure} upstream manifest before writes`, async () => {
+    await versionFixture(async ({ source, target, manifest, git, baseline, cli, bump }) => {
+      await bump();
+      const path = join(source, manifest);
+      if (failure === "missing" || failure === "symlink") await rm(path);
+      if (failure === "symlink") await symlink("../version.json", path);
+      if (failure === "invalid JSON") await writeFile(path, "{broken");
+      if (failure === "missing version") await writeFile(path, "{}");
+      if (failure === "invalid version") await writeFile(path, '{"version":123}');
+      git("add", "."); git("commit", "-qm", "invalid manifest");
+      const result = cli("--apply");
+      assert.notEqual(result.status, 0, result.stdout);
+      assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"), "utf8")).commit, baseline);
+      assert.equal(await readFile(join(target, "skills/managed/SKILL.md"), "utf8"), "baseline\n");
+      for (const rel of ["package.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]) {
+        assert.equal(JSON.parse(await readFile(join(target, rel), "utf8")).version, "1.2.3");
+      }
+    });
+  });
+}
+
+for (const failure of ["invalid JSON", "missing", "symlink", "symlinked directory"]) {
+  test(`version guard rejects ${failure} destination before writes`, async () => {
+    await versionFixture(async ({ directory, target, baseline, cli, bump }) => {
+      await bump();
+      const manifest = join(target, ".codex-plugin/plugin.json");
+      const external = join(directory, "external.json");
+      await writeFile(external, '{"version":"1.2.3","sentinel":"external"}\n');
+      if (failure === "invalid JSON") await writeFile(manifest, "{broken");
+      if (failure === "missing" || failure === "symlink") await rm(manifest);
+      if (failure === "symlink") await symlink(external, manifest);
+      if (failure === "symlinked directory") {
+        const outside = join(directory, "outside");
+        await mkdir(outside);
+        await writeFile(join(outside, "plugin.json"), await readFile(external));
+        await rm(join(target, ".codex-plugin"), { recursive: true });
+        await symlink(outside, join(target, ".codex-plugin"));
+      }
+      const result = cli("--apply");
+      assert.notEqual(result.status, 0, result.stdout);
+      assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"), "utf8")).commit, baseline);
+      assert.equal(await readFile(join(target, "skills/managed/SKILL.md"), "utf8"), "baseline\n");
+      assert.equal(JSON.parse(await readFile(join(target, "package.json"), "utf8")).version, "1.2.3");
+      assert.equal(JSON.parse(await readFile(join(target, ".claude-plugin/plugin.json"), "utf8")).version, "1.2.3");
+      assert.equal(await readFile(external, "utf8"), '{"version":"1.2.3","sentinel":"external"}\n');
+      if (failure === "symlinked directory") {
+        assert.equal(await readFile(join(directory, "outside/plugin.json"), "utf8"), '{"version":"1.2.3","sentinel":"external"}\n');
+      }
+      assert.notEqual(cli("--check").status, 0);
+    });
+  });
+}
+
+test("version guard leaves the original pin after a manifest write fails", {
+  skip: process.platform === "win32" || process.getuid?.() === 0,
+}, async () => {
+  await versionFixture(async ({ target, baseline, cli, bump }) => {
+    await bump();
+    const path = join(target, ".codex-plugin/plugin.json");
+    await chmod(path, 0o444);
+    try {
+      const result = cli("--apply");
+      assert.notEqual(result.status, 0, result.stdout);
+      assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"), "utf8")).commit, baseline);
+      assert.equal(JSON.parse(await readFile(path, "utf8")).version, "1.2.3");
+    } finally {
+      await chmod(path, 0o644);
+    }
+  });
 });
