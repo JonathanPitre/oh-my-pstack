@@ -14,7 +14,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, posix, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 
 const updaterPath = fileURLToPath(import.meta.url);
@@ -48,6 +48,21 @@ export function normalizeContent(source) {
     .replaceAll("grok-4.6-fast-xhigh", "host-configured role/model")
     .replaceAll("claude-opus-5-thinking-xhigh", "host-configured role/model")
     .replaceAll(/\bTask (?:subagent|tool)\b/g, "host task runner");
+}
+
+function normalizeDocumentationLinks(content, sourcePath, sourceRoot, revision, lock) {
+  if (!sourcePath.endsWith(".md")) return content;
+  return content.replace(/\]\(([^)#][^)]*)\)/gu, (match, target) => {
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/)/iu.test(target)) return match;
+    const upstreamPath = posix.normalize(posix.join(posix.dirname(sourcePath), target));
+    if (!upstreamPath.startsWith(`${lock.path}/docs/`)) return match;
+    try {
+      git(["cat-file", "-e", `${revision}:${upstreamPath.split("#", 1)[0]}`], sourceRoot);
+    } catch {
+      throw new Error(`Missing upstream documentation: ${sourcePath} references ${target}`);
+    }
+    return `](${lock.repository.replace(/\.git$/u, "")}/blob/${revision}/${upstreamPath})`;
+  });
 }
 
 export function isProtectedPath(path) {
@@ -190,7 +205,11 @@ async function inventory(lock, sourceRoot, revision) {
       if (raw.includes(0)) throw new Error(`Binary upstream content is unsupported: ${destination}`);
       const content = raw.toString("utf8");
       if (!Buffer.from(content, "utf8").equals(raw)) throw new Error(`Invalid UTF-8 upstream content: ${destination}`);
-      entries.set(destination, { content: normalizeContent(content), sourceMode: mode, sourcePath });
+      entries.set(destination, {
+        content: normalizeDocumentationLinks(normalizeContent(content), sourcePath, sourceRoot, revision, lock),
+        sourceMode: mode,
+        sourcePath,
+      });
     }
   }
   return entries;

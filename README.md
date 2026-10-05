@@ -177,6 +177,11 @@ The updater:
 7. Opens a pull request and squash-merges it only after validation and exact-tree,
    PR-head, and unchanged-main checks pass.
 
+Skill links into upstream `pstack/docs/` are rewritten to public GitHub URLs
+pinned to the imported commit because this package does not bundle those docs.
+The updater checks that each target exists in that upstream revision before
+writing; links between bundled skills remain local.
+
 The workflow uses Ubuntu 26.04 and the latest Node 26 patch. Its JavaScript
 actions use Node 24 independently of the Node version selected for scripts.
 Action releases are pinned to commit hashes. Bun's existing package typecheck

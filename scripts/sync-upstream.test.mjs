@@ -41,6 +41,73 @@ test("normalization removes the supported Cursor runtime bindings", () => {
   assert.match(normalized, /host task runner/u);
 });
 
+for (const missingGuide of [false, true]) {
+  test(`apply ${missingGuide ? "rejects missing" : "relocates unbundled"} upstream documentation links`, async () => {
+    const fixture = await mkdtemp(join(tmpdir(), "pstack-sync-docs-"));
+    const source = join(fixture, "source");
+    const target = join(fixture, "target");
+    try {
+      await mkdir(join(source, "pstack/skills/help/references"), { recursive: true });
+      await mkdir(join(source, "pstack/docs/guide"), { recursive: true });
+      await mkdir(target);
+      await writeFile(join(source, "pstack/skills/help/SKILL.md"), "[Reference](references/details.md)\n");
+      await writeFile(join(source, "pstack/skills/help/references/details.md"), "Details\n");
+      execFileSync("git", ["init", "-q", "-b", "main"], { cwd: source });
+      execFileSync("git", ["config", "user.email", "test@example.invalid"], { cwd: source });
+      execFileSync("git", ["config", "user.name", "pstack test"], { cwd: source });
+      execFileSync("git", ["add", "."], { cwd: source });
+      execFileSync("git", ["commit", "-qm", "baseline"], { cwd: source });
+      const baseline = execFileSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8" }).trim();
+      await writeFile(join(source, "pstack/skills/help/SKILL.md"), [
+        "[Setup](../../docs/guide/setup.md#install)",
+        "[Reference](references/details.md)",
+        "[External](https://example.invalid/docs/guide/setup.md)",
+        "",
+      ].join("\n"));
+      await writeFile(join(source, "pstack/skills/help/references/details.md"), "[Setup](../../../docs/guide/setup.md)\n");
+      if (!missingGuide) {
+        await writeFile(join(source, "pstack/docs/guide/setup.md"), "# Install\n");
+      }
+      execFileSync("git", ["add", "."], { cwd: source });
+      execFileSync("git", ["commit", "-qm", "add guide links"], { cwd: source });
+      const incoming = execFileSync("git", ["rev-parse", "HEAD"], { cwd: source, encoding: "utf8" }).trim();
+      const originalLock = JSON.stringify({
+        repository: "https://github.com/cursor/plugins.git",
+        ref: "main",
+        path: "pstack",
+        commit: baseline,
+        protectedPaths: [],
+        protectedPrefixes: [],
+        sourceRoots: [{ source: "pstack/skills", destination: "skills" }],
+      });
+      await writeFile(join(target, "upstream.lock.json"), originalLock);
+      const apply = () => spawnSync(process.execPath, [
+        new URL("./sync-upstream.mjs", import.meta.url).pathname,
+        "--apply", "--source", source,
+      ], { encoding: "utf8", env: { ...process.env, PSTACK_SYNC_ROOT: target } });
+      const result = apply();
+      if (missingGuide) {
+        assert.notEqual(result.status, 0, "missing upstream docs must not become unchecked external links");
+        assert.match(result.stderr, /Missing upstream documentation/u);
+        assert.equal(await readFile(join(target, "upstream.lock.json"), "utf8"), originalLock);
+        assert.deepEqual(await readdir(target), ["upstream.lock.json"]);
+        return;
+      }
+      assert.equal(result.status, 0, result.stderr);
+      const synced = await readFile(join(target, "skills/help/SKILL.md"), "utf8");
+      const guideURL = `https://github.com/cursor/plugins/blob/${incoming}/pstack/docs/guide/setup.md`;
+      assert.equal(synced, `[Setup](${guideURL}#install)\n[Reference](references/details.md)\n[External](https://example.invalid/docs/guide/setup.md)\n`);
+      assert.equal(await readFile(join(target, "skills/help/references/details.md"), "utf8"), `[Setup](${guideURL})\n`);
+      assert.equal(execFileSync("git", ["show", `${incoming}:pstack/docs/guide/setup.md`], { cwd: source, encoding: "utf8" }), "# Install\n");
+      assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"), "utf8")).commit, incoming);
+      assert.equal(apply().status, 0);
+      assert.equal(await readFile(join(target, "skills/help/SKILL.md"), "utf8"), synced);
+    } finally {
+      await rm(fixture, { recursive: true, force: true });
+    }
+  });
+}
+
 
 test("apply reconciles independent edits in adapted files", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "pstack-sync-merge-"));
