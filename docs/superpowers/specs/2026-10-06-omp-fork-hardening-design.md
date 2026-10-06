@@ -6,7 +6,7 @@ Date: 2026-10-06
 
 Make JonathanPitre/oh-my-pstack a reliable Oh My Pi-first pstack distribution while avoiding unnecessary maintenance ownership. Preserve Cursor pstack workflow intent, track a documented upstream revision, and advance it after compatibility review; upstream lag is acceptable. Improve this fork now without requiring migration to another port.
 
-The user approved independent fork releases and the architecture, verification, and documentation sections presented in chat. This specification still requires written-spec review before implementation planning, followed by plan review and execution-method selection before product changes.
+The user approved independent fork releases and the architecture, verification, and documentation sections, then approved the written specification before planning. During plan review, the user selected 0.15.13-omp.1 instead of a misleading 0.16.0 cutover, retained the package identity pstack-pi, and chose implementation in the current checkout. Review of the revised written artifacts and execution-method selection remain required before product changes.
 
 Success means demonstrated OMP behavior, safe reviewed synchronization, independently releasable fork fixes, and clear onboarding. Installation success or a green unit suite alone is not proof that workflow behavior works.
 
@@ -101,7 +101,8 @@ Keep the package identity `pstack-pi`.
 - Add `version` to the authoritative upstream lock alongside its `commit`; it records the Cursor plugin version read from that exact revision.
 - Upstream sync updates source version/commit together but does not overwrite the fork's version or other fork manifest fields.
 - Validate supported SemVer values before destination writes. The initial source version is 0.15.13, independently confirmed from the pinned Cursor manifest.
-- Bump the fork from 0.15.13 to 0.16.0 for this behavior-changing cutover; subsequent versions follow the fork's own release history.
+- Set the fork release version to 0.15.13-omp.1: the visible Cursor baseline plus an explicit OMP revision. Fork fixes on that baseline increment the omp revision independently; selecting a reviewed new baseline requires an explicit corresponding release version, not automatic manifest rewrites by sync.
+- SemVer treats the omp suffix as a prerelease. Publish this channel with the explicit npm omp dist-tag; npm installation examples use pstack-pi@omp rather than implying a stable latest release. Git installation remains the primary path until publication is actually available.
 - Update tests and documentation that currently require equality between fork and upstream versions. Keep agreement among fork manifests.
 - Validate release-tag/package-version agreement and packaged content before publishing. No publication, tagging, PR submission, or change to live installed packages is part of this task.
 
