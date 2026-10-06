@@ -1,4 +1,4 @@
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
@@ -62,6 +62,26 @@ const requiredSkills = new Set([
 ]);
 
 const failures = [];
+const packageManifest = JSON.parse(await readFile(join(root, "package.json"), "utf8"));
+const canonicalRoot = await realpath(root);
+const canonicalSkillsRoot = await realpath(skillsRoot);
+const shippedRoots = ["package.json", ...(packageManifest.files ?? [])].map(path => resolve(root, path));
+const contains = (directory, path) => {
+  const suffix = relative(directory, path);
+  return !isAbsolute(suffix) && suffix !== ".." && !suffix.startsWith(`..${sep}`);
+};
+const shipped = path => !relative(root, path).split(sep).includes("node_modules")
+  && shippedRoots.some(directory => contains(directory, path));
+async function validateFile(path, boundary) {
+  if (!contains(boundary, path)) throw new Error("target escapes its reference boundary");
+  const canonicalBoundary = await realpath(boundary);
+  if (!contains(canonicalRoot, canonicalBoundary)) throw new Error("reference boundary escapes the package");
+  if (boundary !== root && !contains(canonicalSkillsRoot, canonicalBoundary)) throw new Error("reference boundary escapes the skills tree");
+  const canonicalPath = await realpath(path);
+  if (!contains(canonicalBoundary, canonicalPath)) throw new Error("target symlink escapes its reference boundary");
+  if (!(await stat(canonicalPath)).isFile()) throw new Error("target is not a file");
+  if (!shipped(path) || !shipped(canonicalPath)) throw new Error("target is not declared for the package");
+}
 const skillDirs = (await readdir(skillsRoot, { withFileTypes: true }))
   .filter((entry) => entry.isDirectory())
   .map((entry) => entry.name);
@@ -69,6 +89,7 @@ const skillDirs = (await readdir(skillsRoot, { withFileTypes: true }))
 for (const name of requiredSkills) {
   const path = join(skillsRoot, name, "SKILL.md");
   try {
+    await validateFile(path, skillsRoot);
     const source = await readFile(path, "utf8");
     const frontmatter = source.match(/^---\n([\s\S]*?)\n---/u)?.[1] ?? "";
     if (!/^name:\s*\S+/mu.test(frontmatter)) {
@@ -92,41 +113,51 @@ const collect = async (directory) => {
   }
 };
 await collect(skillsRoot);
+for (const path of ["README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "assets/logo.png", "agents/poteto-agent.md", "agents/comment-sicko.md", "docs/upstream-compatibility-design.md"]) {
+  try { await validateFile(join(root, path), root); }
+  catch (error) { failures.push(`${path}: ${error.message}`); }
+}
+for (const path of new Set(["README.md", "THIRD_PARTY_NOTICES.md", ...(packageManifest.files ?? []).filter(path => path.endsWith(".md"))])) {
+  markdownFiles.push(resolve(root, path));
+}
 
 for (const path of markdownFiles) {
-  const source = await readFile(path, "utf8");
+  let source;
+  try {
+    await validateFile(path, path.startsWith(`${skillsRoot}${sep}`) ? skillsRoot : root);
+    source = await readFile(path, "utf8");
+  } catch (error) {
+    failures.push(`${relative(root, path)}: ${error.message}`);
+    continue;
+  }
   for (const match of source.matchAll(/skill:\/\/([a-z0-9-]+)(\/[^\s`"'<>()[\]#]*)?/gu)) {
     const skillRoot = join(skillsRoot, match[1]);
-    const targetPath = resolve(skillRoot, match[2]?.slice(1) || "SKILL.md");
-    const suffix = relative(skillRoot, targetPath);
     try {
-      if (isAbsolute(suffix) || suffix === ".." || suffix.startsWith(`..${sep}`)) {
-        throw new Error("target escapes skill directory");
-      }
-      if (!(await stat(targetPath)).isFile()) throw new Error("target is not a file");
+      const targetPath = resolve(skillRoot, decodeURIComponent(match[2]?.slice(1) || "SKILL.md"));
+      await validateFile(targetPath, skillRoot);
     } catch {
       failures.push(`${relative(root, path)} references invalid ${match[0]}`);
     }
   }
-  for (const match of source.matchAll(/\]\(([^)#][^)]*)\)/gu)) {
-    const target = match[1].split("#", 1)[0];
-    if (target === "" || /^[a-z]+[0-9]*$/u.test(target)) continue;
-    if (
-      target.startsWith("http://") ||
-      target.startsWith("https://") ||
-      target.startsWith("skill://")
-    ) continue;
-    const targetPath = resolve(path, "..", target);
+  const prose = source.replace(/^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?^ {0,3}\1[ \t]*$/gmu, "");
+  const targets = [
+    ...Array.from(prose.matchAll(/\]\(([^)#][^)]*)\)/gu), match => match[1]),
+    ...Array.from(prose.matchAll(/^ {0,3}\[[^\]]+\]:\s*(<[^>]+>|\S+)/gmu), match => match[1]),
+    ...Array.from(prose.matchAll(/<img\b[^>]*\bsrc\s*=\s*["']([^"']+)["']/giu), match => match[1]),
+  ];
+  for (const reference of targets) {
+    const target = (reference.startsWith("<") ? reference.slice(1, reference.indexOf(">")) : reference.split(/\s/u, 1)[0]).split(/[?#]/u, 1)[0];
+    if (!target || /^https?:\/\//iu.test(target) || target.startsWith("skill://")) continue;
     try {
-      await stat(targetPath);
-    } catch {
-      failures.push(`${relative(root, path)} references missing ${target}`);
+      const targetPath = resolve(path, "..", decodeURIComponent(target));
+      await validateFile(targetPath, path.startsWith(`${skillsRoot}${sep}`) ? skillsRoot : root);
+    } catch (error) {
+      failures.push(`${relative(root, path)} references invalid ${target}: ${error.message}`);
     }
   }
 }
 
 for (const path of [
-  join(root, "package.json"),
   join(root, ".claude-plugin", "plugin.json"),
   join(root, ".codex-plugin", "plugin.json"),
   join(root, "upstream.lock.json"),
@@ -139,9 +170,6 @@ for (const path of [
 }
 
 try {
-  const packageManifest = JSON.parse(
-    await readFile(join(root, "package.json"), "utf8")
-  );
   const requiredKeywords = [
     "pi-package",
     "pstack",
@@ -255,6 +283,7 @@ const forbidden = [
   "claude-opus-5-thinking-xhigh",
 ];
 for (const path of markdownFiles) {
+  if (!path.startsWith(`${skillsRoot}${sep}`)) continue;
   const source = await readFile(path, "utf8");
   for (const token of forbidden) {
     if (source.includes(token)) {

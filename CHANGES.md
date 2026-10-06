@@ -16,3 +16,10 @@
 - Reject unreadable local inputs without advancing the source pin or changing their permissions.
 - Review exports now require a fresh leaf under an existing parent; reused directories and canonical paths inside the destination are rejected.
 - Generate private review directories and files exclusively, without following pre-existing output links; validate review subdirectories before reading snapshots or decisions.
+
+### Package integrity
+
+- Validate decoded local references, named-skill URI boundaries, reference-style Markdown, and the README's HTML logo against lexical and canonical package ownership.
+- Reject escaping symlinks, directory targets, missing resources, and links to existing files omitted from the npm allowlist.
+- Ship the linked upstream compatibility reference and verify the real extracted npm artifact, including complete consumable skill resources and rejection after an installed resource is lost.
+- Make skill-only documentation links self-contained or public, including an explicit example index instead of a directory target.
