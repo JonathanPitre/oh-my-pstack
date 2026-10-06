@@ -2,6 +2,12 @@
 
 ## 0.15.13-omp.1 — unreleased
 
+### Release provenance
+
+- Keep matching fork package/plugin versions independent of Cursor source versions; synchronization never rewrites fork manifests.
+- Record a valid source SemVer beside the exact source commit, reject mixed reviewed metadata, and allow explicit same-pin source-version repair.
+- Use `0.15.13-omp.1` for this fork release and the `omp` npm distribution channel, separate from the pinned Cursor `0.15.13` source.
+
 ### Upstream synchronization
 
 - Apply upstream executable-mode changes even when file contents are unchanged, including same-revision mode repair.

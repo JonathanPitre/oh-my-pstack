@@ -27,6 +27,7 @@ const lockPath = join(root, "upstream.lock.json");
 const boundaryLock = JSON.parse(readFileSync(lockPath, "utf8"));
 const REVIEW_VERSION = 1;
 const MARKERS = /^(<<<<<<<|=======|>>>>>>>)/m;
+const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 
 function git(args, cwd) {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
@@ -110,7 +111,7 @@ function assertOutsideDestination(resolved, label, destination = root) {
 }
 
 function lockConfig(lock) {
-  const { commit, ...config } = lock;
+  const { commit, version, ...config } = lock;
   return JSON.stringify(config);
 }
 
@@ -121,7 +122,7 @@ function decodeUtf8(raw, label) {
   return content;
 }
 
-export const PORTABLE_VERSION_PATHS = [
+const FORK_MANIFEST_PATHS = [
   "package.json",
   ".claude-plugin/plugin.json",
   ".codex-plugin/plugin.json",
@@ -145,29 +146,29 @@ export function readUpstreamPluginVersion(lock, sourceRoot, commit) {
     encoding: "buffer",
   });
   const parsed = JSON.parse(decodeUtf8(raw, `upstream ${rel}`));
-  if (typeof parsed.version !== "string" || !parsed.version) {
-    throw new Error(`Upstream ${rel} at ${commit} is missing a string version field`);
+  if (typeof parsed.version !== "string" || !SEMVER.test(parsed.version)) {
+    throw new Error(`Upstream ${rel} at ${commit} requires a valid SemVer string`);
   }
   return parsed.version;
 }
 
-async function planPortableVersions(lock, sourceRoot, commit) {
-  const upstreamVersion = readUpstreamPluginVersion(lock, sourceRoot, commit);
-  const writes = [];
-  for (const rel of PORTABLE_VERSION_PATHS) {
+async function validateForkVersions() {
+  let version = null;
+  for (const rel of FORK_MANIFEST_PATHS) {
     await validateDestination(rel);
     const path = join(root, rel);
     const stat = await rejectSymlink(path, "version manifest");
     if (!stat || !stat.isFile()) throw new Error(`Missing regular destination version manifest: ${rel}`);
     const parsed = JSON.parse(decodeUtf8(await readFile(path), rel));
-    if (typeof parsed.version !== "string" || !parsed.version) {
-      throw new Error(`${rel} is missing a nonempty string version field`);
+    if (typeof parsed.version !== "string" || !SEMVER.test(parsed.version)) {
+      throw new Error(`${rel} requires a valid fork SemVer string`);
     }
-    if (parsed.version !== upstreamVersion) {
-      writes.push({ rel, path, content: `${JSON.stringify({ ...parsed, version: upstreamVersion }, null, 2)}\n` });
+    if (version !== null && parsed.version !== version) {
+      throw new Error(`Fork package/plugin versions disagree at ${rel}`);
     }
+    version = parsed.version;
   }
-  return { upstreamVersion, writes };
+  return version;
 }
 
 function hasCommit(sourceRoot, commit) {
@@ -469,12 +470,9 @@ function reportConflicts(conflicts) {
 }
 
 async function applyOperations(lock, sourceRoot, commit, operations, dryRun) {
-  const versionPlan = await planPortableVersions(lock, sourceRoot, commit);
+  const upstreamVersion = readUpstreamPluginVersion(lock, sourceRoot, commit);
   for (const operation of operations) {
     console.log(`${dryRun ? "Would" : ""} ${operation.content === null ? "delete" : "update"} ${operation.path}`);
-  }
-  for (const { rel } of versionPlan.writes) {
-    console.log(`${dryRun ? "Would update" : "update"} ${rel} version -> ${versionPlan.upstreamVersion}`);
   }
   if (!dryRun) {
     for (const operation of operations) {
@@ -495,9 +493,8 @@ async function applyOperations(lock, sourceRoot, commit, operations, dryRun) {
         }
       }
     }
-    for (const { path, content } of versionPlan.writes) await writeFile(path, content);
     const temporary = join(dirname(lockPath), `.upstream.lock.${process.pid}.tmp`);
-    await writeFile(temporary, `${JSON.stringify({ ...lock, commit }, null, 2)}\n`);
+    await writeFile(temporary, `${JSON.stringify({ ...lock, commit, version: upstreamVersion }, null, 2)}\n`);
     await rename(temporary, lockPath);
   }
   if (!operations.length) console.log(`No managed skill changes for upstream ${commit}.`);
@@ -528,6 +525,7 @@ async function readSnapshot(directory, name) {
 
 async function exportReview(lock, sourceRoot, commit, reviewDir) {
   const reviewRoot = await resolveDirectory(reviewDir, { mustExist: false, label: "review" });
+  readUpstreamPluginVersion(lock, sourceRoot, commit);
   const { comparisons } = await planUpdate(lock, sourceRoot, commit);
   await mkdir(reviewRoot, { mode: 0o700 });
   await mkdir(join(reviewRoot, "entries"), { mode: 0o700 });
@@ -571,6 +569,9 @@ async function loadManifest(reviewDir) {
   if (!stat.isFile()) throw new Error("Non-file review manifest.json");
   const manifest = JSON.parse(decodeUtf8(await readFile(manifestPath), "review manifest"));
   if (manifest.version !== REVIEW_VERSION) throw new Error(`Unsupported review manifest version: ${manifest.version}`);
+  if (typeof manifest.lock?.version !== "string" || !SEMVER.test(manifest.lock.version)) {
+    throw new Error("Review lock requires a valid recorded source SemVer string");
+  }
   if (typeof manifest.commit !== "string" || !manifest.lock || !Array.isArray(manifest.entries)) {
     throw new Error("Invalid review manifest");
   }
@@ -659,6 +660,7 @@ async function applyReviewedUpdate(lock, sourceRoot, commit, dryRun, reviewDir) 
   if (manifest.implementation !== implementationDigest()) throw new Error("review implementation does not match this updater");
   if (lockConfig(lock) !== lockConfig(manifest.lock)) throw new Error("review lock configuration does not match the current lock");
   if (commit !== manifest.commit) throw new Error(`source revision ${commit} does not match reviewed incoming ${manifest.commit}`);
+  const upstreamVersion = readUpstreamPluginVersion(lock, sourceRoot, manifest.commit);
   const entries = manifest.entries;
   const ids = entries.map((entry) => entry.id);
   const paths = entries.map((entry) => entry.path);
@@ -705,14 +707,11 @@ async function applyReviewedUpdate(lock, sourceRoot, commit, dryRun, reviewDir) 
   }
   const original = locals;
   const final = rebuildFinal(comparisons, decisions);
-  const originalMatch = sameStateMap(live, original) && lock.commit === manifest.lock.commit;
-  const finalMatch = sameStateMap(live, final) && lock.commit === manifest.commit;
+  const originalMatch = sameStateMap(live, original) && lock.commit === manifest.lock.commit &&
+    lock.version === manifest.lock.version;
+  const finalMatch = sameStateMap(live, final) && lock.commit === manifest.commit &&
+    lock.version === upstreamVersion;
   if (finalMatch) {
-    const versionPlan = await planPortableVersions(lock, sourceRoot, manifest.commit);
-    for (const { rel, path, content } of versionPlan.writes) {
-      console.log(`${dryRun ? "Would update" : "update"} ${rel} version -> ${versionPlan.upstreamVersion}`);
-      if (!dryRun) await writeFile(path, content);
-    }
     console.log(`No managed skill changes for upstream ${manifest.commit}.`);
     return 0;
   }
@@ -741,6 +740,10 @@ export async function main(argv = process.argv.slice(2)) {
     return 64;
   }
   const lock = JSON.parse(await readFile(lockPath, "utf8"));
+  if (typeof lock.version !== "string" || !SEMVER.test(lock.version)) {
+    throw new Error("Upstream lock requires a valid recorded source SemVer string");
+  }
+  const forkVersion = await validateForkVersions();
   const required = [];
   if (args.mode === "export-review") required.push(lock.commit);
   if (args.review) {
@@ -758,19 +761,20 @@ export async function main(argv = process.argv.slice(2)) {
     const commit = git(["rev-parse", "HEAD"], source.path);
     console.log(`pinned=${lock.commit}`);
     console.log(`latest=${commit}`);
+    console.log(`fork-version=${forkVersion}`);
     if (args.mode === "check") {
-      const versionPlan = await planPortableVersions(lock, source.path, lock.commit);
-      console.log(`upstream-version=${versionPlan.upstreamVersion}`);
+      const upstreamVersion = readUpstreamPluginVersion(lock, source.path, lock.commit);
+      console.log(`upstream-version=${upstreamVersion}`);
       const behind = commit !== lock.commit;
-      const versionDrift = versionPlan.writes.length > 0;
+      const versionDrift = lock.version !== upstreamVersion;
       if (behind || versionDrift) {
         if (!behind) {
-          console.log("Portable manifest versions do not match the upstream plugin at the pinned commit.");
+          console.log("Recorded source version does not match the plugin at the pinned commit.");
         }
         return 10;
       }
       console.log("Upstream is already pinned at the latest checked revision.");
-      console.log("Portable manifest versions match the upstream plugin at the pin.");
+      console.log("Recorded source version matches the upstream plugin at the pin.");
       return 0;
     }
     if (args.mode === "export-review") return await exportReview(lock, source.path, commit, args.exportReview);

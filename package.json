@@ -1,6 +1,6 @@
 {
   "name": "pstack-pi",
-  "version": "0.15.13",
+  "version": "0.15.13-omp.1",
   "description": "Portable pstack engineering workflows and Agent Skills for Pi, OMP, OpenCode, Claude Code, and Codex.",
   "type": "module",
   "keywords": [
@@ -25,6 +25,14 @@
     "subagents"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JonathanPitre/oh-my-pstack.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "omp"
+  },
   "pi": {
     "skills": [
       "./skills"

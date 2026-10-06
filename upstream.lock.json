@@ -3,6 +3,7 @@
   "ref": "main",
   "path": "pstack",
   "commit": "77526ffa67f8dafc698d14b5356e6d4fc78c3127",
+  "version": "0.15.13",
   "protectedPrefixes": [
     "skills/poteto-mode/",
     "skills/pstack-pi/",

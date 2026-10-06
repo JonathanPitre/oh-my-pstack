@@ -3,6 +3,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const skillsRoot = join(root, "skills");
+const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 const requiredSkills = new Set([
   "architect",
   "arena",
@@ -171,6 +172,9 @@ try {
     failures.push(".codex-plugin/plugin.json has incorrect package identity or skills path");
   }
   const manifestVersions = [packageManifest.version, claudeManifest.version, codexManifest.version];
+  if (manifestVersions.some(version => typeof version !== "string" || !SEMVER.test(version))) {
+    failures.push("package and plugin manifests require valid fork SemVer strings");
+  }
   if (new Set(manifestVersions).size !== 1) {
     failures.push(`package and plugin manifests disagree on version: ${manifestVersions.join(", ")}`);
   }
@@ -227,6 +231,8 @@ try {
     upstreamLock.repository !== "https://github.com/cursor/plugins.git" ||
     upstreamLock.ref !== "main" ||
     !/^[0-9a-f]{40}$/u.test(upstreamLock.commit) ||
+    typeof upstreamLock.version !== "string" ||
+    !SEMVER.test(upstreamLock.version) ||
     !Array.isArray(upstreamLock.sourceRoots)
   ) {
     failures.push("upstream.lock.json is missing an authoritative pinned source");
