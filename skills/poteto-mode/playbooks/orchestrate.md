@@ -103,7 +103,7 @@ A unit is not done until its output is externalized the moment it lands, never b
 - A zombie that returns hours late reconciles against the current frontier and ledger before anything is accepted. Salvage unique findings through a fresh unit, never a blind merge.
 - When continued spawning would produce garbage tree-wide (bad upstream output, broken acceptance, dead infra), write a stop line at the top of the standing orders, let in-flight work finish, fix the cause, clear it.
 - Bound your own infra retries the same way you bound a child's. After a few consecutive tool aborts, stop retrying. Write a terminal handoff to durable state (what is done, where it lives, the exact command to resume) and end the run.
-- After a host restart, trust durable artifacts rather than assumed session liveness. Re-read the standing orders and `units.tsv`, recompute the frontier, reconcile work by PR, branch, and recorded session identifiers, start one fresh sub-coordinator per track from its stored brief plus current state, drain, resume. The dead session's store lock clears itself on the next write; `orch` replaces a lock whose holder pid is gone.
+- After a host restart, trust durable artifacts rather than assumed session liveness. Re-read the standing orders and `units.tsv`, recompute the frontier, reconcile work by PR, branch, and recorded session identifiers, start one fresh sub-coordinator per track from its stored brief plus current state, drain, and continue. A completed native agent id cannot revive that session. The dead session's store lock clears itself on the next write; `orch` replaces a lock whose holder pid is gone.
 
 #### Escalation
 

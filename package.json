@@ -57,6 +57,8 @@
     "test:verify": "node --test scripts/verify.test.mjs",
     "test:sync": "node --test scripts/sync-upstream.test.mjs",
     "test:package": "node --test scripts/package.test.mjs",
+    "test:omp-rpc": "node --test scripts/omp-rpc.test.mjs",
+    "smoke:omp": "node scripts/omp-smoke.mjs",
     "test:install": "node --test --test-concurrency=1 scripts/install.test.mjs",
     "sync:check": "node scripts/sync-upstream.mjs --check",
     "sync:apply": "node scripts/sync-upstream.mjs --apply",

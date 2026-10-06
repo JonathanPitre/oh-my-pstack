@@ -40,7 +40,7 @@ delegation and the active playbook requires it.
 Use a fresh session by default for new work, a fix round, a retry, and the next
 queue item. Retain or resume a session only when the work needs costly live state
 it still owns, such as uncommitted changes, its checkout, a running server,
-simulator, or watcher.
+simulator, or watcher. A completed native agent id cannot revive that session.
 
 ## Models
 
@@ -104,7 +104,9 @@ support it. If the host encodes effort in model IDs, use only detected variants
 with a documented mapping. Never construct an ID by changing a suffix. Keep
 supported aliases, including `inherit-parent`, unchanged. If an explicit effort
 is unsupported or a panel's lengths differ, report the invalid configuration
-before spawning. Do not silently claim the requested budget was applied.
+before spawning. Do not silently claim the requested budget was applied. On OMP
+with `task.enableEffort: false`, omit `effort` entirely and keep a supported
+thinking selector in the model field when that field exists.
 
 Hosts without reasoning controls retain their model choices. Setup must report
 that limitation and omit applied budget and reasoning entries. A model inventory
@@ -142,11 +144,15 @@ does not require it.
 
 ## Long-running work and verification
 
-Use the host's durable goal, watcher, or loop facility when available. An hourly
-audit may be `/loop 1h` on hosts that expose it, or another scheduled tick the host
-actually supports. Otherwise keep the predicate and checkpoint in a project-local
-decision trail. A timed heartbeat is only a fallback. Re-arm a watcher after every
-state-changing wave. Post a status message only for previously unreported changes.
+Use the host's durable goal, watcher, or loop facility only when that capability
+is actually exposed. An hourly audit may be `/loop 1h` on hosts that expose it.
+Do not invent a portable scheduler, timed heartbeat, or unattended hourly
+continuation. If no scheduler exists, keep the predicate and the next exact
+command in a project-local checkpoint and stop. For a finite native
+asynchronous job, yield so the host can deliver; do not poll or wait the
+turn to completion. Re-arm an existing native watcher after every
+state-changing wave. Post a status message only for previously unreported
+changes.
 
 The root coordinator owns user interaction, approvals, integration, and final
 verification. A worker report is evidence, not proof. The root must inspect artifacts

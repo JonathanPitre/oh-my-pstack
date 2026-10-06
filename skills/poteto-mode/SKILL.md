@@ -92,7 +92,7 @@ Read the leaf skill in full for any principle you apply. Each entry names when i
 
 ## Delegation
 
-`poteto-mode` is the sole router. It selects the playbook, step order, canonical role, and lifecycle protocol. The `pstack-pi` adapter translates host mechanics. Never copy a backend's command syntax into a routed skill.
+`poteto-mode` is the sole router. It selects the playbook, step order, canonical role, and lifecycle protocol. Read `skill://pstack-pi` before any child start. That adapter translates host mechanics. Never copy a backend's command syntax into a routed skill.
 
 Use these canonical roles:
 
@@ -111,7 +111,7 @@ Use these canonical roles:
 
 Use only these canonical lifecycle protocols: **Bounded session**, **Panel**, **Long-lived owner**, and **One-shot watcher**. Their mechanics live in the active adapter. Start every Panel participant before waiting for any result. Keep implementers, reviewers, judges, and synthesizers separate. A child never starts another child. It returns proposed briefs to the root.
 
-Pass concise file pointers and explicit worktree or output paths. Review every artifact and run parent verification. Use a fresh session by default for new work, a fix round, a follow-up, a retry, and the next queue item. Supply the original brief, later directives, prior report, and branch. Resume or retain a session only when the work needs costly live state it still owns, such as uncommitted changes, its checkout, a running server, simulator, or watcher. A stop order is not reuse. Once an owner session returns, a fresh session takes the next round unless that costly state is still required. Agreement across independent sessions is useful evidence, not proof. Model selection belongs to the active runtime. When the live task schema exposes a per-item model field, use a verified configured choice. When it does not, use the host's supported routing configuration.
+Pass concise file pointers and explicit worktree or output paths. Review every artifact and run parent verification. Use a fresh session by default for new work, a fix round, a follow-up, a retry, and the next queue item. Supply the original brief, later directives, prior report, and branch. Resume or retain a session only when the work needs costly live state it still owns, such as uncommitted changes, its checkout, a running server, simulator, or watcher. A completed native agent id cannot revive a session. A stop order is not reuse. Once an owner session returns, a fresh session takes the next round unless that costly state is still required. Agreement across independent sessions is useful evidence, not proof. Model selection belongs to the active runtime. When the live task schema exposes a per-item model field, use a verified configured choice. When it does not, use the host's supported routing configuration. Compact previews are not full results. Read `agent://<id>` before acting on a child report. Never send a hidden `effort` field when the live schema omits it.
 
 ## Writing the reply
 

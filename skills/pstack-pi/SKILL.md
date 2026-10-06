@@ -28,7 +28,7 @@ Map a role's behavior to an available agent, not its label to an invented agent 
 
 Use `security-reviewer` for an independent security lane when it is available. A later synthesizer does not replace that review.
 
-Canonical roles and model aliases are not concrete agent names. For the general-purpose default, omit `agent` when the live schema requires omission. `poteto-agent` and `comment-sicko` are direct named compatibility seams only when the host exposes them; they are not the default canonical routing.
+Canonical roles and model aliases are not concrete agent names. For the general-purpose default, omit `agent` when the live schema requires omission. `poteto-agent` and `comment-sicko` are direct named compatibility seams only when the host exposes them; they are not the default canonical routing. Never invent a `role` field. When `designer` or `librarian` is unavailable, map `planner` to `task` with a technical-planning brief and `researcher` to an available read-only research facility, typically `scout`.
 
 The imported warning about a planning subagent concerns a source-host mechanism that bypasses the skill contract. Technical planning through a supported agent with a standalone brief is valid. Native Pi still needs an actual child-delegation facility; a model list does not supply one.
 
@@ -44,11 +44,11 @@ Separate writers through supported isolation or structurally disjoint paths. A w
 
 ## Results and follow-ups
 
-Record the returned agent and job identifiers. Consume asynchronous results when delivered; a preview may be truncated. Read the full result and transcript through the resources the host actually exposes. OMP may provide `agent://<id>` and `history://<id>`.
+Record the returned agent and job identifiers. Consume asynchronous results when delivered; a preview or compact result may be truncated. Always read the full result and transcript through the resources the host actually exposes, typically `agent://<id>` and `history://<id>`. Never treat a compact preview as the child's full report.
 
-Use the live messaging, cancellation, and wait facilities. Some versions expose a hub; others expose resource writes, process controls, or dedicated tools. Do not invent a `hub` operation. Keep working while independent work remains and wait only when blocked. Ignore duplicate terminal deliveries and reject stale generations.
+Use the live messaging, cancellation, and wait facilities. Some versions expose a hub; others expose resource writes, process controls, or dedicated tools. Do not invent a `hub` operation. Keep working while independent work remains. For a finite native `bash`, `eval`, or `task` job started asynchronously, yield the turn so the host can deliver the result. Do not poll, sleep, or call wait merely to hold the turn until that job ends. Consume the native delivery on the follow-up wake. Wait only when blocked and the host has no delivery that will resume the session. Ignore duplicate terminal deliveries and reject stale generations.
 
-Use fresh sessions by default for new work, fix rounds, retries, and the next queue item. Supply the original brief, later directives, prior report, and branch as needed. Retain or resume a session only when the work needs costly live state it still owns, such as uncommitted changes, its checkout, a running server, simulator, or watcher. A stop order to a running agent is not session reuse.
+Use fresh sessions by default for new work, fix rounds, retries, and the next queue item. Supply the original brief, later directives, prior report, and branch as needed. Retain or resume a session only when the work needs costly live state it still owns, such as uncommitted changes, its checkout, a running server, simulator, or watcher. A completed native agent id cannot revive a session. A stop order to a running agent is not session reuse.
 
 A child report is evidence, not verification. The root inspects the artifact and runs the checks assigned to it. Report checks as unrun when they were deferred to the parent. Never steer a reviewer toward a preferred conclusion.
 
@@ -104,7 +104,7 @@ One writer owns each mutable output. A new commit, restack, resolution, or appli
 
 Agent and model selection are separate. OMP can route through agent definitions, configured roles, or agent overrides. When the current task schema exposes a per-item `model` field, use it for a verified configured panel or role choice. When it does not, use the host's supported routing configuration rather than adding an unsupported field. Do not edit user settings merely to compensate for a stale skill example.
 
-Use only selectors and reasoning controls confirmed by the live inventory and tool schema. `inherit-parent` and `auto` mean to omit an explicit model choice when the host supports that behavior. Honor the host's explicit rejection and fallback policy; report an unavailable requested choice instead of silently substituting a guessed model. Claim model independence only when returned resolved-model metadata demonstrates it.
+Use only selectors and reasoning controls confirmed by the live inventory and tool schema. `inherit-parent` and `auto` mean to omit an explicit model choice when the host supports that behavior. Honor the host's explicit rejection and fallback policy; report an unavailable requested choice instead of silently substituting a guessed model. Never send a hidden `effort` field when `task.enableEffort` is false or the live schema omits it. Pass a per-item `model` only when that field is present, using a confirmed selector such as `provider/model:level` rather than a separate effort argument. Claim model independence only when returned resolved-model metadata demonstrates it.
 
 ## Writing
 

@@ -41,6 +41,14 @@ keep their model configuration in the host's `opencode.json` or
 `opencode.jsonc`. If OpenCode does not expose a usable subagent, report that
 limitation instead of substituting a Pi-specific mechanism.
 
+### OMP delegation prerequisite
+
+OMP already exposes native `task` agents and a per-item `model` field. Do not
+install `pi-subagents`, write `.pi/settings.json`, or modify global OMP settings.
+Use the live task schema, available-command catalog, and confirmed
+`provider/model` selectors. When `task.enableEffort` is false, omit `effort` and
+keep a supported thinking selector in the model value.
+
 ### 1. Detect available choices
 
 Detect these capabilities independently:
@@ -55,7 +63,8 @@ For Pi, `pi --list-models` is the model inventory and the `provider/model-id` fo
 is the concrete value to record. With `pi-subagents` installed, the `subagent`
 tool and `/subagents-doctor` establish the delegation inventory. The live host
 inventory is authoritative. Never copy a vendor slug from prose or guess that a
-model is available.
+model is available. On OMP, the live `task` schema and confirmed model inventory
+are authoritative; do not use Pi's `get_commands` or invent a hidden effort field.
 
 If the host has a task facility but cannot enumerate models, use only a host role
 mapping that the facility documents. Do not ask the user to invent a raw slug.
@@ -63,7 +72,9 @@ mapping that the facility documents. Do not ask the user to invent a raw slug.
 
 When the live task schema exposes a per-item `model` field, record that OMP and
 compatible hosts can assign a model per child. Do not omit or forbid that field
-to compensate for a stale example.
+to compensate for a stale example. When `task.enableEffort` is false, do not
+record or dispatch a hidden `effort` field; keep a supported thinking selector
+in the model value, such as `provider/model:low`.
 
 ### 2. Load current state
 
@@ -115,7 +126,8 @@ If the host exposes models but no task or subagent facility, stop model mapping
 with an explicit capability report. For native Pi, recommend
 `pi install npm:pi-subagents`, a restart, and `/subagents-doctor`. For OpenCode,
 explain that its native agents are not visible or configured and point the user
-to the host's agent configuration. For any other host, name the missing
+to the host's agent configuration. For OMP, name the missing live `task` schema
+or model inventory without installing Pi packages. For any other host, name the missing
 capability without proposing a vendor-specific substitute. Say that no pstack
 role can receive a different model in this session and do not present the
 portable defaults as an assignment or overwrite an existing role configuration
@@ -130,14 +142,20 @@ Every reasoning override must be supported by that model and the host's child
 facility. Validate each panel entry. Do not treat an unsupported budget as applied.
 Role aliases pass only when the host task facility documents those aliases.
 `inherit-parent` passes only when the host can pass the current model to a child. If
-a selected explicit model is unavailable, stop and ask for a replacement. Never
+a selected explicit model is unavailable, or a reasoning value is unsupported,
+stop, report both rejected choices, and ask for a replacement. Never
 write a configuration that requires another host. Never write a guessed vendor
-slug.
+slug, silently substitute a model, or dispatch a child to work around an invalid
+choice. On OMP, write only the selected project configuration, typically
+`.pstack/config.md`; do not create `.pi/settings.json` or modify global
+settings.
 
 ### 5. Write the configuration
 
 When the host supports per-child selection, create the parent directory when
-needed and overwrite the selected file so re-runs remain idempotent. Preserve the
+needed and overwrite the selected file so re-runs remain idempotent. Preserve
+unrelated existing lines that are still valid, including comments and
+non-role configuration, unless the user asked to replace them. Preserve the
 confirmed role choices and record the applied budget as `# budget: <label> (<target>)`.
 For `unlimited`, record `# budget: unlimited (keep current efforts)`. Omit the budget
 line if the host has no reasoning control. When the host accepts separate reasoning
@@ -147,7 +165,8 @@ without an explicit effort. Keep those entries out of model ID values. Use concr
 detected model IDs in this shape. Replace every placeholder with a model the
 current host reported, and use `inherit-parent` only when the host supports it.
 Panel examples below have three seats, matching current upstream defaults; keep a
-user's longer or shorter confirmed list:
+user's longer or shorter confirmed list. A confirmed one-entry panel is one
+participant, not an implicit three-seat default:
 
 ```md
 # pstack role and model configuration
@@ -211,6 +230,11 @@ For OpenCode, do not write `.pi/settings.json`. Keep the concrete model choices 
 the user's existing `opencode.json` or `opencode.jsonc`, and use the live
 OpenCode agent names in the pstack role map. Preserve unrelated configuration.
 
+For OMP, do not write `.pi/settings.json` or global `config.yml`. Keep confirmed
+role choices in the selected project configuration, typically `.pstack/config.md`,
+and route children through the live task schema. Preserve unrelated existing
+lines. Confirm the project save with the host's structured ask tool.
+
 ### 6. Confirm
 
 If a concrete configuration was written, tell the user the exact path and list
@@ -219,8 +243,9 @@ any unsupported budget choices and any roles that retain host defaults. List any
 retired lines that were dropped. For Pi, name both `.pstack/config.md`
 and `.pi/settings.json`, and tell the user to run `/subagents-models` to inspect
 the live mapping. For OpenCode, name the `opencode.json` or `opencode.jsonc`
-path used. State that configuration does not create models, child agents,
-permissions, or delegation facilities.
+path used. For OMP, name the selected project configuration path only. State that
+configuration does not create models, child agents, permissions, or
+delegation facilities.
 
 If the host lacks per-child model selection, report that no role configuration was
 written or activated. Tell the user which model is active and how to switch the

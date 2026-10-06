@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
+import { startOmpRpc } from "./omp-rpc.mjs";
 
 const execFileAsync = promisify(execFile);
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -17,10 +18,14 @@ const hostBins = Object.fromEntries([
   ["opencode", "PSTACK_OPENCODE_BIN"], ["claude", "PSTACK_CLAUDE_BIN"],
   ["codex", "PSTACK_CODEX_BIN"], ["gemini", "PSTACK_GEMINI_BIN"],
 ].map(([host, variable]) => [host, process.env[variable] ?? host]));
+const selectedHosts = new Set(process.env.PSTACK_INSTALL_HOSTS === undefined
+  ? Object.keys(hostBins)
+  : process.env.PSTACK_INSTALL_HOSTS.split(",").map(host => host.trim()));
+if ([...selectedHosts].some(host => !Object.hasOwn(hostBins, host))) throw new Error("PSTACK_INSTALL_HOSTS must contain comma-separated host keys: omp, pi, opencode, claude, codex, gemini");
 const envAllowlist = ["PATH", "LANG", "LC_ALL", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS", "GIT_SSL_CAINFO"];
 const liveHome = process.env.HOME ?? "";
 const livePaths = [
-  ".omp/settings.json", ".omp/agent/settings.json", ".omp/plugins/omp-plugins.lock.json", ".omp/plugins/package.json", ".omp/plugins/bun.lock",
+  ".omp/settings.json", ".omp/agent/settings.json", ".omp/agent/config.yml", ".omp/plugins/omp-plugins.lock.json", ".omp/plugins/package.json", ".omp/plugins/bun.lock",
   ".pi/agent/settings.json", ".pi/agent/npm/package.json", ".pi/agent/npm/package-lock.json",
   ".claude/settings.json", ".claude/plugins/installed_plugins.json", ".claude/plugins/known_marketplaces.json",
   ".codex/config.toml", ".gemini/settings.json", ".config/opencode/opencode.json", ".config/opencode/opencode.jsonc",
@@ -192,8 +197,24 @@ async function piInstall(ctx) {
   ctx.installed = true;
 }
 
+async function ompCatalog(ctx) {
+  // lean-ctx: explicit real-model metadata only; remove when native startup no longer needs a model without credentials.
+  const args = ["--mode", "rpc", "--no-session", "--no-rules", "--no-title", "--model", "openai-codex/gpt-6.1-sol"];
+  ctx.lastCommand = `${hostBins.omp} ${args.join(" ")} → get_available_commands`;
+  const client = startOmpRpc(hostBins.omp, args, { cwd: ctx.cwd, env: ctx.env });
+  try {
+    const { data } = await client.command({ type: "get_available_commands" });
+    assert.ok(Array.isArray(data?.commands), "OMP malformed native command catalog");
+    assert.equal(client.frames.some(frame => frame.type === "agent_start"), false, "catalog discovery must not start a model turn");
+    return data.commands.filter(entry => entry.source === "skill");
+  } finally {
+    await client.close();
+  }
+}
+
 async function ompInstall(ctx) {
   if (!ctx.installed) {
+    absent((await ompCatalog(ctx)).map(entry => entry.name.replace(/^skill:/u, "")), "OMP");
     for (const name of requiredSkills) {
       await assert.rejects(command(hostBins.omp, ["read", `skill://${name}`], ctx), /not found|unknown|no .*skill|unable to resolve/iu, `OMP baseline unexpectedly resolves ${name}`);
     }
@@ -204,7 +225,10 @@ async function ompInstall(ctx) {
   assert.equal(plugin?.enabled, true, "OMP installed plugin is not enabled");
   assert.ok(under(plugin.path, ctx.home), `OMP plugin path is not isolated: ${plugin.path}`);
   if (ctx.public) assert.ok(under(await realpath(plugin.path), ctx.home), "OMP public install cannot be a local link");
-  for (const name of requiredSkills) {
+  const skills = await ompCatalog(ctx);
+  inventory(skills.map(entry => entry.name.replace(/^skill:/u, "")), ctx.expected ?? await skillNames(await realpath(plugin.path)), "OMP");
+  if (!ctx.public) assert.equal(await realpath(plugin.path), await realpath(ctx.source), "OMP link resolves an older or different package");
+  for (const name of [...requiredSkills, "pstack-pi", "orchestrate-omp", "poteto-help"]) {
     const output = await command(hostBins.omp, ["read", `skill://${name}`], ctx);
     assert.match(output, new RegExp(`name: ${name}(?:\\r?\\n|$)`), `OMP failed to load ${name}`);
     assert.ok(output.includes(plugin.path), `OMP did not resolve ${name} through the installed plugin`);
@@ -304,13 +328,14 @@ test("real host installation leaves live agent configuration unchanged", async (
   const snapshots = new Map(await Promise.all(livePaths.map(async (path) => [path, await snapshot(path)])));
   try {
     // Resolve PATH entries once, before any child receives its disposable HOME.
-    for (const host of Object.keys(hostBins)) {
+    for (const host of selectedHosts) {
       if (!isAbsolute(hostBins[host])) {
         try { hostBins[host] = (await execFileAsync("which", [hostBins[host]])).stdout.trim(); }
         catch (error) { hostBins[host] = resolve(hostBins[host]); }
       }
     }
     for (const [name, host, install] of cases) {
+      if (!selectedHosts.has(host)) continue;
       await t.test(name, async (subtest) => {
         const ctx = await setup(host);
         subtest.diagnostic(`${name}: ${ctx.version}; executable=${hostBins[host]}; source=${ctx.public ? publicSource : requestedSource === "candidate" ? "isolated candidate" : requestedSource}`);
@@ -320,6 +345,9 @@ test("real host installation leaves live agent configuration unchanged", async (
       });
     }
   } finally {
-    for (const [path, bytes] of snapshots) assert.deepEqual(await snapshot(path), bytes, `live configuration changed: ${path}`);
+    for (const [path, bytes] of snapshots) {
+      const current = await snapshot(path);
+      assert.ok(bytes === null ? current === null : current?.equals(bytes), `live configuration changed: ${path}`);
+    }
   }
 });
