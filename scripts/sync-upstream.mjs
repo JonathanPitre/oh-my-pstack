@@ -314,14 +314,21 @@ async function validateDestination(destination) {
   }
 }
 
+function applicableSourceMode(path, baseline, local, incoming) {
+  return isProtectedPath(path) && local !== null
+    ? null
+    : (incoming?.mode ?? baseline?.mode ?? null);
+}
+
 async function reconcilePath(path, baseline, local, incoming, scratch) {
   const baseContent = baseline?.content ?? null;
   const localContent = local?.content ?? null;
   const latest = incoming?.content ?? null;
-  const sourceMode = isProtectedPath(path) && localContent !== null
-    ? null
-    : (incoming?.mode ?? baseline?.mode ?? null);
-  const operation = (content) => (content === localContent ? null : { path, content, sourceMode });
+  const sourceMode = applicableSourceMode(path, baseline, local, incoming);
+  const operation = (content) => {
+    const modeDiffers = content !== null && sourceMode !== null && local?.mode !== sourceMode;
+    return content === localContent && !modeDiffers ? null : { path, content, sourceMode };
+  };
   if (isProtectedPath(path)) {
     if (latest === baseContent) return { outcome: { kind: "keep" }, operation: null, proposal: null };
     if (localContent === latest) return { outcome: { kind: "keep" }, operation: null, proposal: null };
@@ -352,7 +359,8 @@ async function reconcilePath(path, baseline, local, incoming, scratch) {
     }
     return { outcome: { kind: "delete" }, operation: operation(null), proposal: null };
   }
-  return { outcome: { kind: latest === localContent ? "keep" : "write" }, operation: operation(latest), proposal: null };
+  const update = operation(latest);
+  return { outcome: { kind: update ? "write" : "keep" }, operation: update, proposal: null };
 }
 
 async function planUpdate(lock, sourceRoot, commit, locals = null) {
@@ -470,10 +478,16 @@ async function applyOperations(lock, sourceRoot, commit, operations, dryRun) {
       if (operation.content === null) {
         await unlink(path).catch((error) => { if (error.code !== "ENOENT") throw error; });
       } else {
-        await mkdir(dirname(path), { recursive: true });
-        await writeFile(path, operation.content);
+        if ((await localState(path))?.content !== operation.content) {
+          await mkdir(dirname(path), { recursive: true });
+          await writeFile(path, operation.content);
+        }
         if (operation.sourceMode !== null) {
-          await chmod(path, operation.sourceMode === "100755" ? 0o755 : 0o644);
+          const permissions = (await lstat(path)).mode & 0o777;
+          const nextPermissions = operation.sourceMode === "100755"
+            ? permissions | 0o100 | ((permissions & 0o444) >> 2)
+            : permissions & ~0o111;
+          if (nextPermissions !== permissions) await chmod(path, nextPermissions);
         }
       }
     }
@@ -597,7 +611,8 @@ function rebuildFinal(comparisons, decisions) {
       else {
         final.set(comparison.path, {
           content: decision.content,
-          mode: comparison.local?.mode ?? comparison.incoming?.mode ?? comparison.baseline?.mode ?? "100644",
+          mode: applicableSourceMode(comparison.path, comparison.baseline, comparison.local, comparison.incoming)
+            ?? comparison.local?.mode ?? comparison.incoming?.mode ?? comparison.baseline?.mode ?? "100644",
         });
       }
     } else if (comparison.operation?.content === null) final.set(comparison.path, null);
@@ -619,10 +634,9 @@ function reviewedOperations(comparisons, decisions) {
       if (decision.kind === "delete") {
         if (comparison.local !== null) operations.push({ path: comparison.path, content: null, sourceMode: null });
       } else {
-        const sourceMode = isProtectedPath(comparison.path) && comparison.local !== null
-          ? null
-          : (comparison.incoming?.mode ?? comparison.baseline?.mode ?? null);
-        if (comparison.local?.content !== decision.content) {
+        const sourceMode = applicableSourceMode(comparison.path, comparison.baseline, comparison.local, comparison.incoming);
+        if (comparison.local?.content !== decision.content ||
+            (sourceMode !== null && comparison.local?.mode !== sourceMode)) {
           operations.push({ path: comparison.path, content: decision.content, sourceMode });
         }
       }

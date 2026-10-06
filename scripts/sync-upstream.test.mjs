@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmod, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -1195,5 +1195,147 @@ test("version guard leaves the original pin after a manifest write fails", {
     } finally {
       await chmod(path, 0o644);
     }
+  });
+});
+
+test("mode-only upstream changes preserve target permission boundaries", async () => {
+  await versionFixture(async ({ source, target, git, cli }) => {
+    const rel = "skills/managed/SKILL.md";
+    await chmod(join(target, rel), 0o640);
+    await chmod(join(source, "pstack", rel), 0o755);
+    git("add", "."); git("commit", "-qm", "make managed file executable");
+    const result = cli("--apply");
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(await readFile(join(target, rel), "utf8"), "baseline\n");
+    assert.equal((await lstat(join(target, rel))).mode & 0o777, 0o750);
+    assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"))).commit, git("rev-parse", "HEAD"));
+  });
+});
+
+test("mode-only upstream removal clears execute bits without broadening access", async () => {
+  await versionFixture(async ({ source, target, git, lock, cli }) => {
+    const rel = "skills/managed/SKILL.md";
+    await chmod(join(source, "pstack", rel), 0o755);
+    git("add", "."); git("commit", "-qm", "executable baseline");
+    lock.commit = git("rev-parse", "HEAD");
+    await writeFile(join(target, "upstream.lock.json"), JSON.stringify(lock));
+    await chmod(join(target, rel), 0o750);
+    await chmod(join(source, "pstack", rel), 0o644);
+    git("add", "."); git("commit", "-qm", "remove execute permission");
+    const result = cli("--apply");
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(await readFile(join(target, rel), "utf8"), "baseline\n");
+    assert.equal((await lstat(join(target, rel))).mode & 0o777, 0o640);
+    assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"))).commit, git("rev-parse", "HEAD"));
+  });
+});
+
+test("mode-only same-pin drift repairs upstream-owned execute state", async () => {
+  await versionFixture(async ({ target, baseline, cli }) => {
+    const path = join(target, "skills/managed/SKILL.md");
+    await chmod(path, 0o750);
+    const result = cli("--apply");
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(await readFile(path, "utf8"), "baseline\n");
+    assert.equal((await lstat(path)).mode & 0o777, 0o640);
+    assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"))).commit, baseline);
+  });
+});
+
+test("mode-only upstream changes retain protected local permissions", async () => {
+  await versionFixture(async ({ source, target, git, lock, cli }) => {
+    const rel = "skills/managed/SKILL.md";
+    lock.protectedPaths = [rel];
+    await writeFile(join(target, "upstream.lock.json"), JSON.stringify(lock));
+    await chmod(join(target, rel), 0o640);
+    await chmod(join(source, "pstack", rel), 0o755);
+    git("add", "."); git("commit", "-qm", "upstream execute permission");
+    const result = cli("--apply");
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(await readFile(join(target, rel), "utf8"), "baseline\n");
+    assert.equal((await lstat(join(target, rel))).mode & 0o777, 0o640);
+    assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"))).commit, git("rev-parse", "HEAD"));
+  });
+});
+
+test("mode-only unreadable local input fails before changing permissions or pin", {
+  skip: process.platform === "win32" || process.getuid?.() === 0,
+}, async () => {
+  await versionFixture(async ({ source, target, git, baseline, cli }) => {
+    const path = join(target, "skills/managed/SKILL.md");
+    await chmod(path, 0o220);
+    try {
+      await chmod(join(source, "pstack/skills/managed/SKILL.md"), 0o755);
+      git("add", "."); git("commit", "-qm", "upstream execute permission");
+      assert.notEqual(cli("--apply").status, 0);
+      assert.equal((await lstat(path)).mode & 0o777, 0o220);
+      assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"))).commit, baseline);
+    } finally {
+      await chmod(path, 0o640);
+    }
+    assert.equal(await readFile(path, "utf8"), "baseline\n");
+  });
+});
+
+test("mode-only updates do not require write access to unchanged content", async () => {
+  await versionFixture(async ({ source, target, git, cli }) => {
+    const rel = "skills/managed/SKILL.md";
+    await chmod(join(target, rel), 0o444);
+    await chmod(join(source, "pstack", rel), 0o755);
+    git("add", "."); git("commit", "-qm", "upstream execute permission");
+    try {
+      const result = cli("--apply");
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(await readFile(join(target, rel), "utf8"), "baseline\n");
+      assert.equal((await lstat(join(target, rel))).mode & 0o777, 0o555);
+      assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"))).commit, git("rev-parse", "HEAD"));
+    } finally {
+      await chmod(join(target, rel), 0o644);
+    }
+  });
+});
+
+test("mode-only review applies the intended state and permits exact replay", async () => {
+  await versionFixture(async ({ directory, source, target, git, cli }) => {
+    const rel = "skills/managed/SKILL.md", review = join(directory, "review");
+    await chmod(join(target, rel), 0o640);
+    await chmod(join(source, "pstack", rel), 0o755);
+    git("add", "."); git("commit", "-qm", "upstream execute permission");
+    const exported = cli("--export-review", review);
+    assert.equal(exported.status, 0, exported.stderr);
+    const applied = cli("--apply", "--review", review);
+    assert.equal(applied.status, 0, applied.stderr);
+    assert.equal((await lstat(join(target, rel))).mode & 0o777, 0o750);
+    const replayed = cli("--apply", "--review", review);
+    assert.equal(replayed.status, 0, replayed.stderr);
+    assert.equal(await readFile(join(target, rel), "utf8"), "baseline\n");
+    assert.equal((await lstat(join(target, rel))).mode & 0o777, 0o750);
+    assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"))).commit, git("rev-parse", "HEAD"));
+  });
+});
+
+test("mode-only conflict resolution records the applicable mode for replay", async () => {
+  await versionFixture(async ({ directory, source, target, git, cli }) => {
+    const rel = "skills/managed/SKILL.md", review = join(directory, "review");
+    await writeFile(join(target, rel), "local edit\n");
+    await chmod(join(target, rel), 0o750);
+    git("rm", "--", join("pstack", rel));
+    git("commit", "-qm", "upstream removal");
+    const exported = cli("--export-review", review);
+    assert.equal(exported.status, 0, exported.stderr);
+    const manifestPath = join(review, "manifest.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    const entry = manifest.entries.find(entry => entry.path === rel);
+    assert.equal(entry.outcome.kind, "conflict");
+    entry.decision = { kind: "write", reason: "Keep the reviewed local content after source deletion" };
+    await writeFile(join(review, "entries", entry.id, "resolved.txt"), "local edit\n");
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    const applied = cli("--apply", "--review", review);
+    assert.equal(applied.status, 0, applied.stderr);
+    assert.equal((await lstat(join(target, rel))).mode & 0o777, 0o640);
+    assert.equal(await readFile(join(target, rel), "utf8"), "local edit\n");
+    const replayed = cli("--apply", "--review", review);
+    assert.equal(replayed.status, 0, replayed.stderr);
+    assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"))).commit, git("rev-parse", "HEAD"));
   });
 });
