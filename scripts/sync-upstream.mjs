@@ -7,6 +7,7 @@ import {
   lstat,
   mkdir,
   readFile,
+  realpath,
   mkdtemp,
   rename,
   rm,
@@ -14,7 +15,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { readFileSync } from "node:fs";
-import { dirname, join, posix, resolve, sep } from "node:path";
+import { basename, dirname, join, posix, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 
 const updaterPath = fileURLToPath(import.meta.url);
@@ -102,8 +103,8 @@ function sameStateMap(left, right) {
   return true;
 }
 
-function assertOutsideDestination(resolved, label) {
-  if (resolved === root || resolved.startsWith(`${root}${sep}`)) {
+function assertOutsideDestination(resolved, label, destination = root) {
+  if (resolved === destination || resolved.startsWith(`${destination}${sep}`)) {
     throw new Error(`Unsafe ${label} path inside destination: ${resolved}`);
   }
 }
@@ -217,7 +218,10 @@ async function resolveDirectory(path, { mustExist, label }) {
   if (stat && !stat.isDirectory()) throw new Error(`Non-directory ${label} path: ${path}`);
   if (!stat && mustExist) throw new Error(`Missing ${label} path: ${path}`);
   assertOutsideDestination(resolved, label);
-  return resolved;
+  if (stat && !mustExist) throw new Error(`Existing ${label} export directory: ${path}`);
+  const canonical = join(await realpath(dirname(resolved)), basename(resolved));
+  assertOutsideDestination(canonical, label, await realpath(root));
+  return canonical;
 }
 
 function entryDirectory(reviewRoot, id) {
@@ -511,8 +515,7 @@ async function applyUpdate(lock, sourceRoot, commit, dryRun) {
 
 async function writeSnapshot(directory, name, state) {
   const path = join(directory, name);
-  if (state === null) await unlink(path).catch((error) => { if (error.code !== "ENOENT") throw error; });
-  else await writeFile(path, state.content);
+  if (state !== null) await writeFile(path, state.content, { flag: "wx", mode: 0o600 });
 }
 
 async function readSnapshot(directory, name) {
@@ -526,17 +529,18 @@ async function readSnapshot(directory, name) {
 async function exportReview(lock, sourceRoot, commit, reviewDir) {
   const reviewRoot = await resolveDirectory(reviewDir, { mustExist: false, label: "review" });
   const { comparisons } = await planUpdate(lock, sourceRoot, commit);
-  await mkdir(join(reviewRoot, "entries"), { recursive: true });
+  await mkdir(reviewRoot, { mode: 0o700 });
+  await mkdir(join(reviewRoot, "entries"), { mode: 0o700 });
   const entries = [];
   for (const [index, comparison] of comparisons.entries()) {
     const id = String(index + 1);
     const directory = entryDirectory(reviewRoot, id);
-    await mkdir(directory, { recursive: true });
+    await mkdir(directory, { mode: 0o700 });
     await writeSnapshot(directory, "base.txt", comparison.baseline);
     await writeSnapshot(directory, "local.txt", comparison.local);
     await writeSnapshot(directory, "incoming.txt", comparison.incoming);
     if (comparison.outcome.kind === "conflict") {
-      await writeFile(join(directory, "proposal.txt"), comparison.proposal ?? "");
+      await writeFile(join(directory, "proposal.txt"), comparison.proposal ?? "", { flag: "wx", mode: 0o600 });
     }
     entries.push({
       id,
@@ -555,7 +559,7 @@ async function exportReview(lock, sourceRoot, commit, reviewDir) {
     implementation: implementationDigest(),
     entries,
   };
-  await writeFile(join(reviewRoot, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+  await writeFile(join(reviewRoot, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, { flag: "wx", mode: 0o600 });
   return 0;
 }
 
@@ -564,10 +568,15 @@ async function loadManifest(reviewDir) {
   const manifestPath = join(reviewRoot, "manifest.json");
   const stat = await rejectSymlink(manifestPath, "review manifest");
   if (!stat) throw new Error("Missing review manifest.json");
+  if (!stat.isFile()) throw new Error("Non-file review manifest.json");
   const manifest = JSON.parse(decodeUtf8(await readFile(manifestPath), "review manifest"));
   if (manifest.version !== REVIEW_VERSION) throw new Error(`Unsupported review manifest version: ${manifest.version}`);
   if (typeof manifest.commit !== "string" || !manifest.lock || !Array.isArray(manifest.entries)) {
     throw new Error("Invalid review manifest");
+  }
+  await resolveDirectory(join(reviewRoot, "entries"), { mustExist: true, label: "review entries" });
+  for (const entry of manifest.entries) {
+    await resolveDirectory(entryDirectory(reviewRoot, entry.id), { mustExist: true, label: "review entry" });
   }
   return { reviewRoot, manifest };
 }

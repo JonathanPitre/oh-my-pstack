@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmod, lstat, mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
@@ -877,15 +877,6 @@ test("review export writes numbered snapshot artifacts without destination write
   });
 });
 
-test("review substitute diagnostic names export-review for unresolved apply", async () => {
-  await reviewFixture(async ({ cli, untouched }) => {
-    const result = cli("--apply");
-    assert.equal(result.status, 2, result.stderr);
-    assert.match(result.stderr, /--export-review/u);
-    assert.doesNotMatch(result.stderr, /Resolve conflicts manually before rerunning --apply/u);
-    await untouched();
-  });
-});
 
 test("review rejects decisions that override ordinary clean planner results", async () => {
   await reviewFixture(async ({ exportReview, approve, save, cli, review, target, lock }) => {
@@ -1339,3 +1330,69 @@ test("mode-only conflict resolution records the applicable mode for replay", asy
     assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"))).commit, git("rev-parse", "HEAD"));
   });
 });
+
+test("review export refuses an existing manifest symlink without mutation", async () => {
+  await reviewFixture(async ({ directory, review, cli, untouched }) => {
+    const sentinel = join(directory, "sentinel");
+    await writeFile(sentinel, "keep sentinel\n");
+    await mkdir(review);
+    await symlink(sentinel, join(review, "manifest.json"));
+    const result = cli("--export-review", review);
+    assert.equal(await readFile(sentinel, "utf8"), "keep sentinel\n");
+    assert.notEqual(result.status, 0);
+    await untouched();
+  });
+});
+
+test("review export refuses an empty pre-existing directory without writes", async () => {
+  await reviewFixture(async ({ review, cli, untouched }) => {
+    await mkdir(review);
+    const result = cli("--export-review", review);
+    assert.deepEqual(await readdir(review), []);
+    assert.notEqual(result.status, 0);
+    await untouched();
+  });
+});
+
+test("review export does not follow a pre-existing entries directory symlink", async () => {
+  await reviewFixture(async ({ directory, review, cli, untouched }) => {
+    const outside = join(directory, "outside-entries");
+    await mkdir(outside);
+    await writeFile(join(outside, "sentinel"), "keep sentinel\n");
+    await mkdir(review);
+    await symlink(outside, join(review, "entries"));
+    const result = cli("--export-review", review);
+    assert.deepEqual(await readdir(outside), ["sentinel"]);
+    assert.equal(await readFile(join(outside, "sentinel"), "utf8"), "keep sentinel\n");
+    assert.notEqual(result.status, 0);
+    await untouched();
+  });
+});
+
+test("review export rejects an ancestor alias into the destination", async () => {
+  await reviewFixture(async ({ directory, target, cli, untouched }) => {
+    const alias = join(directory, "destination-alias");
+    await symlink(target, alias);
+    const result = cli("--export-review", join(alias, "review"));
+    await assert.rejects(lstat(join(target, "review")), { code: "ENOENT" });
+    assert.notEqual(result.status, 0);
+    await untouched();
+  });
+});
+
+for (const scope of ["entries", "numbered entry"]) {
+  test(`review application rejects a symlinked ${scope} directory before destination writes`, async () => {
+    await reviewFixture(async ({ directory, review, cli, untouched, exportReview, approve }) => {
+      const manifest = await exportReview();
+      await approve(manifest);
+      const conflict = manifest.entries.find(entry => entry.path === "skills/private/a.md");
+      const original = scope === "entries" ? join(review, "entries") : join(review, "entries", conflict.id);
+      const outside = join(directory, "outside-review-data");
+      await rename(original, outside);
+      await symlink(outside, original);
+      const result = cli("--apply", "--review", review);
+      await untouched();
+      assert.notEqual(result.status, 0);
+    });
+  });
+}
