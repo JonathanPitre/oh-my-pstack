@@ -6,22 +6,26 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 
 concurrency:
   group: upstream-pstack-sync
   cancel-in-progress: false
 
 jobs:
-  sync:
+  candidate:
     runs-on: ubuntu-26.04
     timeout-minutes: 15
+    outputs:
+      changed: ${{ steps.update.outputs.changed }}
+      base: ${{ steps.base.outputs.sha }}
+      source-commit: ${{ steps.proposal.outputs.source-commit }}
+      source-version: ${{ steps.proposal.outputs.source-version }}
     steps:
       - name: Check out package
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: main
+          persist-credentials: false
       - id: base
         name: Record validation base
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
@@ -31,85 +35,121 @@ jobs:
           node-version: 26.x
           check-latest: true
           package-manager-cache: false
-
       - id: update
-        name: Apply upstream update and detect changes
+        name: Apply upstream update and detect owned changes
         run: |
           node scripts/sync-upstream.mjs --apply
-          if [[ -n "$(git status --porcelain --untracked-files=all -- skills upstream.lock.json package.json .claude-plugin/plugin.json .codex-plugin/plugin.json ':(exclude)**/node_modules/**')" ]]; then
+          if [[ -n "$(git status --porcelain --untracked-files=all -- ':(exclude)skills' ':(exclude)upstream.lock.json' ':(exclude)**/node_modules/**')" ]]; then
+            echo "Sync changed files outside proposal ownership." >&2
+            git status --porcelain
+            exit 1
+          fi
+          if [[ -n "$(git status --porcelain --untracked-files=all -- skills upstream.lock.json ':(exclude)**/node_modules/**')" ]]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
-
       - if: steps.update.outputs.changed == 'true'
         name: Verify package
         run: |
           npm run verify
           npm run test:verify
-
       - if: steps.update.outputs.changed == 'true'
-        name: Test updater
-        run: npm run test:sync
-
+        name: Test updater and proposal intake
+        run: |
+          npm run test:sync
+          npm run test:proposal
       - if: steps.update.outputs.changed == 'true'
         name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-
       - if: steps.update.outputs.changed == 'true'
         name: Test bundled scripts
         run: |
           bun install --cwd skills/poteto-mode/scripts --frozen-lockfile
           bun test orch watch-pr
           bun run --cwd skills/poteto-mode/scripts typecheck
-
       - if: steps.update.outputs.changed == 'true'
-        id: validated
-        name: Capture validated update tree
+        id: proposal
+        name: Write bounded proposal artifact
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
         run: |
-          git add --all -- skills upstream.lock.json package.json .claude-plugin/plugin.json .codex-plugin/plugin.json ':(exclude)**/node_modules/**'
-          echo "tree=$(git write-tree)" >> "$GITHUB_OUTPUT"
-      - id: update_pr
-        if: steps.update.outputs.changed == 'true'
-        name: Open update pull request
+          set -euo pipefail
+          artifact="${RUNNER_TEMP}/pstack-proposal"
+          mkdir -p "$artifact"
+          git add --all -- skills upstream.lock.json ':(exclude)**/node_modules/**'
+          git diff --cached --no-renames --binary HEAD -- skills upstream.lock.json > "$artifact/proposal.patch"
+          if [[ ! -s "$artifact/proposal.patch" ]]; then
+            echo "Owned changes produced an empty patch." >&2
+            exit 1
+          fi
+          node --input-type=module -e '
+            import { createHash } from "node:crypto";
+            import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+            const [patchPath, metadataPath, base, outputPath] = process.argv.slice(1);
+            const patch = readFileSync(patchPath);
+            const lock = JSON.parse(readFileSync("upstream.lock.json", "utf8"));
+            writeFileSync(metadataPath, JSON.stringify({
+              base,
+              sourceCommit: lock.commit,
+              sourceVersion: lock.version,
+              patchSha256: createHash("sha256").update(patch).digest("hex"),
+            }));
+            appendFileSync(outputPath, `source-commit=${lock.commit}\nsource-version=${lock.version}\n`);
+          ' "$artifact/proposal.patch" "$artifact/metadata.json" "$BASE_SHA" "$GITHUB_OUTPUT"
+      - if: steps.update.outputs.changed == 'true'
+        name: Upload proposal artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: upstream-proposal
+          path: ${{ runner.temp }}/pstack-proposal
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 1
+
+  propose:
+    needs: candidate
+    if: needs.candidate.outputs.changed == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out trusted base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download proposal artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: upstream-proposal
+          path: ${{ runner.temp }}/pstack-proposal
+      - name: Apply trusted proposal
+        env:
+          EXPECTED_BASE: ${{ github.sha }}
+        run: node scripts/sync-proposal.mjs "${RUNNER_TEMP}/pstack-proposal" "$EXPECTED_BASE"
+      - name: Open update pull request
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
+          token: ${{ github.token }}
           add-paths: |
             skills
             upstream.lock.json
-            package.json
-            .claude-plugin/plugin.json
-            .codex-plugin/plugin.json
             :(exclude)**/node_modules/**
           commit-message: "chore: sync upstream pstack"
           title: "chore: sync upstream pstack"
           body: |
-            Automated update from the pinned authoritative Cursor pstack source.
+            Automated proposal from the pinned authoritative Cursor pstack source.
 
-            Adapted files are reconciled with a deterministic three-way merge;
-            the proposal is merged only after this workflow's validation passes.
+            Base: `${{ needs.candidate.outputs.base }}`
+            Source commit: `${{ needs.candidate.outputs.source-commit }}`
+            Source version: `${{ needs.candidate.outputs.source-version }}`
+
+            Adapted files are reconciled with a deterministic three-way merge.
+            This pull request is an inspectable proposal, not an approved release.
+            It is not merged automatically.
           branch: automation/upstream-pstack
           base: main
           delete-branch: true
-      - name: Merge validated update
-        if: steps.update.outputs.changed == 'true' && steps.update_pr.outputs.pull-request-number != '' && steps.update_pr.outputs.pull-request-operation != 'closed'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.update_pr.outputs.pull-request-number }}
-          PR_HEAD_SHA: ${{ steps.update_pr.outputs.pull-request-head-sha }}
-          VALIDATED_TREE: ${{ steps.validated.outputs.tree }}
-          VALIDATED_BASE: ${{ steps.base.outputs.sha }}
-        run: |
-          set -euo pipefail
-          git fetch --depth 1 origin automation/upstream-pstack
-          if [[ "$(git rev-parse FETCH_HEAD)" != "$PR_HEAD_SHA" || "$(git rev-parse 'FETCH_HEAD^{tree}')" != "$VALIDATED_TREE" ]]; then
-            echo "Update PR differs from validated tree." >&2
-            exit 1
-          fi
-          main_sha="$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq .object.sha)"
-          if [[ "$main_sha" != "$VALIDATED_BASE" ]]; then
-            echo "main changed during validation; rerun the sync." >&2
-            exit 1
-          fi
-          gh pr merge "$PR_NUMBER" --repo "$GH_REPO" --squash --match-head-commit "$PR_HEAD_SHA"

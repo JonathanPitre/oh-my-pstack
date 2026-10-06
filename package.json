@@ -56,6 +56,7 @@
     "verify": "node scripts/verify.mjs",
     "test:verify": "node --test scripts/verify.test.mjs",
     "test:sync": "node --test scripts/sync-upstream.test.mjs",
+    "test:proposal": "node --test scripts/sync-proposal.test.mjs",
     "test:package": "node --test scripts/package.test.mjs",
     "test:omp-rpc": "node --test scripts/omp-rpc.test.mjs",
     "smoke:omp": "node scripts/omp-smoke.mjs",
