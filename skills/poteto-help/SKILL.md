@@ -39,7 +39,7 @@ Use OMP's actual available-command catalog for command names and aliases (`get_a
 
 On another host, use its native installer and skill catalog. See [installation.md](https://github.com/JonathanPitre/oh-my-pstack/blob/main/docs/installation.md). Cursor's `/add-plugin` and sidebar are not portable installation commands.
 
-Installing does not start a task or create delegation capabilities. Invoke the setup or workflow explicitly. The [README](https://github.com/JonathanPitre/oh-my-pstack/blob/main/README.md) is the fork's entry point; [source guide page 1](https://github.com/cursor/plugins/blob/77526ffa67f8dafc698d14b5356e6d4fc78c3127/pstack/docs/guide/01-setup.md) describes Cursor. Offer to word a first prompt, per [`references/prompting.md`](references/prompting.md).
+Installing does not start a task or create delegation capabilities. Invoke the setup or workflow explicitly. The [README](https://github.com/JonathanPitre/oh-my-pstack/blob/main/README.md) is the fork's entry point; [source guide page 1](https://github.com/cursor/plugins/blob/e5a8186d7b43be8d6ac4452440fbead5f1a51c70/pstack/docs/guide/01-setup.md) describes Cursor. Offer to word a first prompt, per [`references/prompting.md`](references/prompting.md).
 
 If cost is the worry, explain that subagents and review panels spend extra tokens. Rerun setup for cheaper supported models, less reasoning, or fewer panel seats. A confirmed panel list starts one participant per entry, in its configured order. `auto` and `inherit-parent` are valid only when the runtime supports their documented meaning; verify resolved models rather than promising lower cost or chat-model inheritance.
 
@@ -47,7 +47,7 @@ This fork supports OMP's native task delegation and per-child model routing thro
 
 ## Start a task with `/poteto-mode`
 
-`/poteto-mode` matches the task to a playbook, copies the playbook's steps into the todo list, and runs the other skills as the steps need them. A step it skips stays in the list as `skip: <reason>`. A good prompt states the goal and how to tell it's done. It doesn't list skills, because a hand-written sequence tends to drop or reorder steps the playbook would keep. Read [`references/prompting.md`](references/prompting.md) before you help word one. [Guide page 2](https://github.com/cursor/plugins/blob/77526ffa67f8dafc698d14b5356e6d4fc78c3127/pstack/docs/guide/02-poteto-mode.md) has examples.
+`/poteto-mode` matches the task to a playbook, copies the playbook's steps into the todo list, and runs the other skills as the steps need them. A step it skips stays in the list as `skip: <reason>`. A good prompt states the goal and how to tell it's done. It doesn't list skills, because a hand-written sequence tends to drop or reorder steps the playbook would keep. Read [`references/prompting.md`](references/prompting.md) before you help word one. [Guide page 2](https://github.com/cursor/plugins/blob/e5a8186d7b43be8d6ac4452440fbead5f1a51c70/pstack/docs/guide/02-poteto-mode.md) has examples.
 
 On OMP, begin each new task with `/skill:poteto-mode`; do not claim a Cursor Custom Mode is required or available. In Cursor, Enter attaches a skill to one message, while Use as Mode keeps it active; see [Cursor's skills docs](https://cursor.com/docs/skills) for that host.
 
@@ -115,11 +115,11 @@ Playbooks are step lists inside `/poteto-mode`, not skills, so they have no slas
 - "full autopilot on this queue" runs Autopilot-full. "stack them, don't ship" runs Autopilot-stack.
 - "run the eval playbook" runs Eval.
 
-Without `/poteto-mode`, a phrase such as "babysit this pr" can start Cursor's own skill for the same job instead. The Playbooks section of [`poteto-mode`](../poteto-mode/SKILL.md) lists every playbook and when it applies. [Guide page 6](https://github.com/cursor/plugins/blob/77526ffa67f8dafc698d14b5356e6d4fc78c3127/pstack/docs/guide/06-verify-and-ship.md) covers opening, babysitting, and landing a PR.
+Without `/poteto-mode`, a phrase such as "babysit this pr" can start Cursor's own skill for the same job instead. The Playbooks section of [`poteto-mode`](../poteto-mode/SKILL.md) lists every playbook and when it applies. [Guide page 6](https://github.com/cursor/plugins/blob/e5a8186d7b43be8d6ac4452440fbead5f1a51c70/pstack/docs/guide/06-verify-and-ship.md) covers opening, babysitting, and landing a PR.
 
 pstack has no planning skill. Cursor's Plan Mode works alongside it. For work that spans phases or stacked PRs, asking `/poteto-mode` for a plan runs the [Multi-phase plan playbook](../poteto-mode/playbooks/multi-phase-plan.md), which writes the plan and doesn't implement it. For a design question, the Prototype playbook or `/architect` settles it in code first.
 
-Principles are one-rule skills that `/poteto-mode` reads and cites in its replies. The user rarely invokes one. They steer with the names instead, as in "apply prove it works. show me the real output." Typing `/principle-<name>` still loads one on demand. [Guide page 8](https://github.com/cursor/plugins/blob/77526ffa67f8dafc698d14b5356e6d4fc78c3127/pstack/docs/guide/08-principles.md) lists them.
+Principles are one-rule skills that `/poteto-mode` reads and cites in its replies. The user rarely invokes one. They steer with the names instead, as in "apply prove it works. show me the real output." Typing `/principle-<name>` still loads one on demand. [Guide page 8](https://github.com/cursor/plugins/blob/e5a8186d7b43be8d6ac4452440fbead5f1a51c70/pstack/docs/guide/08-principles.md) lists them.
 
 ## Fix a run that went wrong
 
@@ -134,7 +134,7 @@ Principles are one-rule skills that `/poteto-mode` reads and cites in its replie
 | An overnight run moved but finished nothing | Use a real completion predicate and an exposed scheduler; without one, record a manual checkpoint and exact next command instead of promising unattended hourly continuation. |
 | The reply claims success from a green build | Ask for the real command, flow, stored value, or profile. That's the prove-it-works principle. |
 
-For a run that drifts, [`references/prompting.md`](references/prompting.md) has one-line steers. [Guide page 10](https://github.com/cursor/plugins/blob/77526ffa67f8dafc698d14b5356e6d4fc78c3127/pstack/docs/guide/10-recipes-and-pitfalls.md) has more pitfalls and the recipes worth copying.
+For a run that drifts, [`references/prompting.md`](references/prompting.md) has one-line steers. [Guide page 10](https://github.com/cursor/plugins/blob/e5a8186d7b43be8d6ac4452440fbead5f1a51c70/pstack/docs/guide/10-recipes-and-pitfalls.md) has more pitfalls and the recipes worth copying.
 
 ## Make pstack my own
 
@@ -143,7 +143,7 @@ For a run that drifts, [`references/prompting.md`](references/prompting.md) has 
 - `/poteto-mode write a skill for <workflow>` runs the authoring playbook. The eval playbook tests a skill change blind.
 - Fix a misbehaving skill in its own PR, not inside the feature work where it went wrong.
 
-[Guide page 9](https://github.com/cursor/plugins/blob/77526ffa67f8dafc698d14b5356e6d4fc78c3127/pstack/docs/guide/09-make-it-yours.md) covers each of these.
+[Guide page 9](https://github.com/cursor/plugins/blob/e5a8186d7b43be8d6ac4452440fbead5f1a51c70/pstack/docs/guide/09-make-it-yours.md) covers each of these.
 
 ## Reply
 
