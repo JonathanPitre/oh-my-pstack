@@ -8,7 +8,7 @@
 - Record a valid source SemVer beside the exact source commit, reject mixed reviewed metadata, and allow explicit same-pin source-version repair.
 - Use `0.15.13-omp.1` for this fork release and the `omp` npm distribution channel, separate from the pinned Cursor `0.15.13` source.
 - Protected local ownership now includes `skills/poteto-help/` together with the OMP adapters; help, setup, and runtime instructions describe this host rather than Cursor UI.
-- Scheduled synchronization proposes owned `skills/` and `upstream.lock.json` changes only. Candidate validation runs without repository write credentials. Proposals are not merged automatically.
+- Scheduled synchronization proposes owned `skills/` and `upstream.lock.json` changes only. Candidate validation runs without repository write credentials. The uploaded artifact is only `proposal.patch` and `metadata.json`. Proposals are not merged automatically.
 
 ### OMP behavior
 
@@ -16,6 +16,7 @@
 - Setup writes project `.pstack/config.md` with supported `provider/model:level` selectors, preserves unrelated lines, and does not create `.pi/settings.json`.
 - Native workflow dispatch maps planner to `task` and researcher to `scout` when designer and librarian are disabled, consumes full `agent://` results, and yields finite native async jobs instead of polling in-turn.
 - Without a scheduler, lifecycle work records a manual checkpoint rather than inventing a portable `/loop`.
+- Authenticated smoke keeps the disposable workspace on failure so traces remain inspectable, and it does not treat a skipped run as passing.
 
 ### Upstream synchronization
 
@@ -32,3 +33,6 @@
 - Reject escaping symlinks, directory targets, missing resources, and links to existing files omitted from the npm allowlist.
 - Ship the linked upstream compatibility reference and verify the real extracted npm artifact, including complete consumable skill resources and rejection after an installed resource is lost.
 - Make skill-only documentation links self-contained or public, including an explicit example index instead of a directory target.
+
+
+[You have received this identical output 3 times. Re-reading '/home/johndoe/Work/oh-my-pstack/CHANGES.md:raw' will not change it — use a narrower selector (path:A-B), or proceed with the edit.]

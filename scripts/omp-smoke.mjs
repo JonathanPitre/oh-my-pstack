@@ -207,7 +207,7 @@ try {
 } catch (error) {
   const calls = rpc ? toolCalls(rpc.frames).map(frame => ({ name: frame.toolName, args: frame.args })) : [];
   const promptResults = rpc ? rpc.frames.filter(frame => frame.type === "prompt_result").map(frame => ({ id: frame.id, status: frame.status, sessionSettled: frame.sessionSettled, agentInvoked: frame.agentInvoked })) : [];
-  console.error(redact(JSON.stringify({ scenario: currentScenario, error: error.message, nativeError: error.cause?.error, completed: scenarios, promptResults, toolCalls: calls, lastAssistantText: lastText })));
+  console.error(redact(JSON.stringify({ scenario: currentScenario, error: error.message, nativeError: error.cause?.error, completed: scenarios, promptResults, toolCalls: calls, lastAssistantText: lastText, retainedWorkspace: root })));
   process.exitCode = 1;
 } finally {
   try {
@@ -216,7 +216,14 @@ try {
       const current = await snapshot(path);
       assert.ok(bytes === null ? current === null : current?.equals(bytes), `live configuration changed: ${path}`);
     }
+  } catch (restoreError) {
+    process.exitCode = 1;
+    console.error(redact(JSON.stringify({ error: restoreError.message, retainedWorkspace: root })));
   } finally {
-    await rm(root, { recursive: true, force: true });
+    if (process.exitCode) {
+      console.error(`retained workspace: ${root}`);
+    } else {
+      await rm(root, { recursive: true, force: true });
+    }
   }
 }

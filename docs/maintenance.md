@@ -20,7 +20,7 @@ From the repository root:
 npm run verify
 node --test scripts/verify.test.mjs scripts/sync-upstream.test.mjs scripts/sync-proposal.test.mjs scripts/omp-rpc.test.mjs scripts/package.test.mjs
 bun --cwd skills/poteto-mode/scripts test orch watch-pr
-bun --cwd skills/poteto-mode/scripts run typecheck
+bun run --cwd skills/poteto-mode/scripts typecheck
 ```
 
 `npm run verify` checks skill inventory, frontmatter, local references, `skill://` targets, manifests, the upstream lock, and forbidden vendor-specific runtime bindings. Skill resource targets must resolve to files within their named skill.
