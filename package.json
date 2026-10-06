@@ -50,7 +50,10 @@
     ".agents/plugins",
     "upstream.lock.json",
     "assets",
-    "docs/upstream-compatibility-design.md"
+    "docs/upstream-compatibility-design.md",
+    "docs/installation.md",
+    "docs/maintenance.md",
+    "CHANGES.md"
   ],
   "scripts": {
     "verify": "node scripts/verify.mjs",

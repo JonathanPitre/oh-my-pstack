@@ -7,6 +7,15 @@
 - Keep matching fork package/plugin versions independent of Cursor source versions; synchronization never rewrites fork manifests.
 - Record a valid source SemVer beside the exact source commit, reject mixed reviewed metadata, and allow explicit same-pin source-version repair.
 - Use `0.15.13-omp.1` for this fork release and the `omp` npm distribution channel, separate from the pinned Cursor `0.15.13` source.
+- Protected local ownership now includes `skills/poteto-help/` together with the OMP adapters; help, setup, and runtime instructions describe this host rather than Cursor UI.
+- Scheduled synchronization proposes owned `skills/` and `upstream.lock.json` changes only. Candidate validation runs without repository write credentials. Proposals are not merged automatically.
+
+### OMP behavior
+
+- Isolated OMP installation loads the complete packaged skill catalog from the candidate, including `pstack-pi`, `orchestrate-omp`, and `poteto-help`.
+- Setup writes project `.pstack/config.md` with supported `provider/model:level` selectors, preserves unrelated lines, and does not create `.pi/settings.json`.
+- Native workflow dispatch maps planner to `task` and researcher to `scout` when designer and librarian are disabled, consumes full `agent://` results, and yields finite native async jobs instead of polling in-turn.
+- Without a scheduler, lifecycle work records a manual checkpoint rather than inventing a portable `/loop`.
 
 ### Upstream synchronization
 

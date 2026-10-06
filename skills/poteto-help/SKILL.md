@@ -37,7 +37,7 @@ On OMP:
 
 Use OMP's actual available-command catalog for command names and aliases (`get_available_commands` for RPC clients, not Pi's `get_commands`). The table and example prompts below use upstream shorthand; on OMP, use `/skill:<name>` unless the catalog confirms another alias. Load `skill://pstack-pi` and its runtime reference for the native execution contract. `pstack-pi` and `orchestrate-omp` are runtime adapters, not replacements for the `poteto-mode` workflow entry point.
 
-On another host, use its native installer and skill catalog. Cursor's `/add-plugin` and sidebar are not portable installation commands.
+On another host, use its native installer and skill catalog. See [installation.md](https://github.com/JonathanPitre/oh-my-pstack/blob/main/docs/installation.md). Cursor's `/add-plugin` and sidebar are not portable installation commands.
 
 Installing does not start a task or create delegation capabilities. Invoke the setup or workflow explicitly. The [README](https://github.com/JonathanPitre/oh-my-pstack/blob/main/README.md) is the fork's entry point; [source guide page 1](https://github.com/cursor/plugins/blob/77526ffa67f8dafc698d14b5356e6d4fc78c3127/pstack/docs/guide/01-setup.md) describes Cursor. Offer to word a first prompt, per [`references/prompting.md`](references/prompting.md).
 
