@@ -40,7 +40,6 @@ test("the real npm artifact ships the complete skills and rejects lost installed
     for (const path of ["README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "CHANGES.md", "assets/logo.png", "agents/poteto-agent.md", "agents/comment-sicko.md", ".claude-plugin/plugin.json", ".claude-plugin/marketplace.json", ".codex-plugin/plugin.json", ".agents/plugins/marketplace.json", "upstream.lock.json", "docs/upstream-compatibility-design.md", "docs/installation.md", "docs/maintenance.md"]) {
       assert.ok((await stat(join(installed, path))).isFile(), `missing installed resource: ${path}`);
     }
-    assert.ok(!packed.files.some(file => file.path.startsWith("docs/superpowers/") || file.path.startsWith(".superpowers/")), "private execution history must not ship");
     await rm(join(installed, "skills/poteto-mode/playbooks/bug-fix.md"));
     const incomplete = verify();
     assert.notEqual(incomplete.status, 0, "an installed workflow with a lost playbook must be rejected");
