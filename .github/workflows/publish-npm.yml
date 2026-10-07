@@ -42,6 +42,3 @@ jobs:
           npm run test:package
       - name: Publish to npm
         run: npm publish --access public --provenance --tag omp
-
-
-[You have received this identical output 3 times. Re-reading '/home/johndoe/Work/oh-my-pstack/.github/workflows/publish-npm.yml:raw' will not change it — use a narrower selector (path:A-B), or proceed with the edit.]

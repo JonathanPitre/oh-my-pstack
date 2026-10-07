@@ -155,6 +155,3 @@ jobs:
           branch: automation/upstream-pstack
           base: main
           delete-branch: true
-
-
-[You have received this identical output 3 times. Re-reading '/home/johndoe/Work/oh-my-pstack/.github/workflows/upstream-sync.yml:raw' will not change it — use a narrower selector (path:A-B), or proceed with the edit.]
