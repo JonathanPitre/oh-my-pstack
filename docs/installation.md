@@ -12,7 +12,7 @@ Confirm the enabled plugin with `omp plugin list --json`, then load skills with 
 
 For local development, link a checkout with `omp plugin link /absolute/path/to/oh-my-pstack`, or run `omp --plugin-dir /absolute/path/to/oh-my-pstack`.
 
-OMP already exposes native `task` agents and a per-item `model` field. Do not install `pi-subagents` or write `.pi/settings.json` for OMP.
+OMP already exposes native `task` agents. On OMP 18.12.5, ordinary tasks select an agent. Configure its model through native agent frontmatter, `modelRoles`, or `task.agentModelOverrides`. The task `model` field is reserved for historical `seance` consults. Do not install `pi-subagents` or write `.pi/settings.json` for OMP. See [OMP's task routing contract](https://github.com/can1357/oh-my-pi/blob/v18.12.5/docs/task-agent-discovery.md).
 
 ### Updating an installed OMP package
 
@@ -66,14 +66,11 @@ cp -R .pstack-source/skills/. .opencode/skills/
 
 Run `opencode debug skill` from that project. OpenCode already provides primary and subagents. Configure their models through `opencode.json` or `opencode.jsonc`. Do not install `pi-subagents` or write Pi settings on OpenCode.
 
-## Claude Code
+## Cursor, Claude, and Grok
 
-```bash
-claude plugin marketplace add JonathanPitre/oh-my-pstack
-claude plugin install pstack-pi@oh-my-pstack
-claude plugin list --json
-claude plugin details pstack-pi
-```
+Use the original [Cursor pstack plugin](https://github.com/cursor/plugins/tree/main/pstack) for Cursor, Claude, and Grok workflows. This fork no longer distributes a Claude Code marketplace plugin. Its maintained integration is Oh My Pi.
+
+This removes the Claude Code installation path. OMP can still use Claude or Grok models when its live model inventory and task interface support them.
 
 ## Codex
 
@@ -106,7 +103,6 @@ The coverage column lists cases in the install test suite. It does not report a 
 | OMP | `omp install` or a local plugin link | Maps roles to capabilities exposed by OMP. | Yes |
 | Pi | `pi install` | Native Pi has no subagents. Optional `pi-subagents` adds child delegation and per-role model assignments. | Yes |
 | OpenCode | Copy skills into the project or user skill directory. | Uses native agents and model settings in `opencode.json` or `opencode.jsonc`. | Global and project |
-| Claude Code | Install from the Claude marketplace. | Maps roles to capabilities exposed by the active session. | Yes |
 | Codex | Install from the Codex marketplace. | Maps roles to capabilities exposed by the active session. | Yes |
 | Gemini CLI | Install the skills with `gemini skills install`. | Maps roles to capabilities exposed by the active session. | Yes |
 

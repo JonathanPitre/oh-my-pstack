@@ -22,17 +22,15 @@ Track one checklist entry per phase before starting. Use the host's planning fac
 
 ## Phase A: Ground the problem
 
-Build a real mental model of every system the new code touches. Run the **how** skill over the relevant subsystems.
-
-Naming a file isn't grounding. Produce the traced model `how` prescribes. If the design redefines ownership or layering, also run the **why** skill on the existing shape so the rationale becomes a constraint, not a guess.
+Build a real mental model of every system the new code touches. Run the **how** skill over the relevant subsystems. Naming a file isn't grounding. Produce the architectural explanation `how` prescribes. If the design redefines ownership or layering, also run the **why** skill on the existing shape so the rationale becomes a constraint, not a guess.
 
 Skip Phase A only when the work is genuinely greenfield with no surrounding system to integrate.
 
 ## Phase B: Sketch
 
-Run the **arena** skill with the design-sketch task and the Phase A grounding artifacts. Pass `references/runner-prompt.md` as each runner's prompt. Each candidate produces a design package shaped per `references/rationale-template.md`.
+Run the **arena** skill with the design-sketch task and the Phase A grounding artifacts. Pass `references/runner-prompt.md` as each runner's prompt.
 
-Take the `architect runners` panel from `$PSTACK_CONFIG` when that variable is set, otherwise `.pstack/config.md`, in place of `arena runners`. Honor every configured seat, including `auto` or `inherit-parent` when the host can pass the parent model to a child: omit an explicit model for those aliases. Pass a per-item `model` only when the live task schema exposes that field and the value is in the live inventory. With no configured panel, select a diverse panel from the live host's child facility. Role names are not proof of distinct models. If the host rejects a configured choice, honor its documented rejection and fallback policy and report the unfilled seat; do not guess a vendor family or substitute a default slug. A missing child facility is a capability gap, not a completed arena. Arena must still produce independent candidates and an independent cross-judge before synthesis.
+Take the `architect runners` panel from `$PSTACK_CONFIG` when that variable is set, otherwise `.pstack/config.md`, in place of `arena runners`. Honor every configured seat, including `auto` or `inherit-parent` when the host can pass the parent model to a child: omit an explicit model for those aliases. Route each choice through the portable runtime contract and verify its resolved model. With no configured panel, select a diverse panel from the live host's child facility. Role names are not proof of distinct models. If the host rejects a configured choice, honor its documented rejection and fallback policy and report the unfilled seat; do not guess a vendor family or substitute a default slug. A missing child facility is a capability gap, not a completed arena. Arena must still produce independent candidates and an independent cross-judge before synthesis.
 
 Design it twice. Require at least two structurally distinct candidates before synthesis, even when the first looks sufficient. This is the **exhaust-the-design-space** principle skill made concrete. Whole-shape alternatives, not point fixes inside one shape.
 
@@ -40,7 +38,7 @@ Screen every candidate against [`references/design-red-flags.md`](references/des
 
 Compare viable candidates on interface depth. Prefer the design that hides more complexity behind a smaller, simpler public surface. A rich interface can keep call chains short by concentrating capability instead of scattering it across layers.
 
-Arena returns one synthesized design package. The synthesis decision populates the rationale's "Synthesis decision" section.
+Arena returns one synthesized design package. Its synthesis decision fills the rationale's "Synthesis decision" section.
 
 ## Phase C: Agree (opt-in)
 
@@ -54,9 +52,7 @@ If the human pushes back on the shape (in a checkpoint or after the fact), treat
 
 ## Phase D: Implement against the sketch
 
-Replace `not implemented` bodies with code, pseudocode with logic. The synthesized sketch is the contract.
-
-Deviations from the sketch are signal worth surfacing, not friction to absorb silently. If a function needs a parameter the sketch didn't anticipate, ask whether the sketch was wrong, the requirement was missed, or the implementation is overreaching.
+Replace `not implemented` bodies with code, pseudocode with logic. The synthesized sketch is the contract. Deviations from it are signal to surface, not friction to absorb silently. If a function needs a parameter the sketch didn't anticipate, ask whether the sketch was wrong, the requirement was missed, or the implementation is overreaching.
 
 ## Phase E: Scrap when the architecture is wrong
 

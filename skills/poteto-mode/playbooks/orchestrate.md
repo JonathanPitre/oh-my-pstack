@@ -13,7 +13,7 @@ Three rules carry the rest.
 Open an explicit plan with the steps below copied in verbatim.
 #### Roles and placement
 
-- **Coordinator (this chat).** Local. Frames, authors briefs, drains the inbox, owns the human report, makes judgment calls. It never authors or edits code: conflicted merges, restacks, and code changes are always tasks. Mechanically landing a verified unit (fast-forward or clean cherry-pick of a worker's commit, then push) is bookkeeping the coordinator may do itself on repos where local git is cheap. Queueing finished work behind an idle stacker is how a deadline harvests nothing. The loop is agentic end to end. Sessions are started, followed up, and drained only through the active adapter's canonical protocols. State reads and writes go through `~/.agents/skills/poteto-mode/scripts/orch/orch.ts` at drain points, one command in and one line out. The CLI never spawns, waits, or wakes anything.
+- **Coordinator (this chat).** Local. Frames, authors briefs, drains the inbox, owns the human report, makes judgment calls. It never authors or edits code: conflicted merges, restacks, and code changes are always tasks. Mechanically landing a verified unit (fast-forward or clean cherry-pick of a worker's commit, then push) is bookkeeping the coordinator may do itself on repos where local git is cheap. Queueing finished work behind an idle stacker is how a deadline harvests nothing. The loop is agentic end to end. Sessions are started, followed up, and drained only through the active adapter's canonical protocols. State reads and writes go through `scripts/orch/orch.ts` resolved relative to this skill's discovered directory at drain points, one command in and one line out. The CLI never spawns, waits, or wakes anything.
 - **Sub-coordinator.** A root-started canonical `owner` **Long-lived owner** session, one per track, and only when the program exceeds what one coordinator can drain. A track the coordinator can drain itself needs no middle layer: each layer re-pays a full orientation preamble, and a blocking sub-coordinator hides work while the root idles. It owns its track's units and boards, authors standalone worker and verifier briefs, and returns those briefs to the root to start. Children never start children. It rolls up aggregates at wave boundaries and never forwards raw reports. Cap in-flight children at what one drain can process, roughly ten, as a rolling window. Never as blocking batches, which cost the slowest child of every batch.
 - **Worker / verifier.** Root-started canonical `implementer`, `mechanical`, or `reviewer` sessions. Choose isolation explicitly: writers get separate worktrees unless outputs are structurally disjoint. Sessions that need installed control capabilities, workspace-scoped history, simulators, IDE state, or local authentication run where those resources exist. Briefs inline everything not available through named repository paths or runtime resources. Prefer fewer, broader workers. One writer per worktree or branch (principle-separate-before-serializing-shared-state). A unit's verifier is an independent session from its worker.
 
@@ -21,7 +21,7 @@ Depth stays at coordinator, track, worker. Author the track decomposition per pr
 
 #### Store layout
 
-Create `orchestrate/<project-slug>/` in the current agent's store (path in the system prompt). Every file has exactly one writer. Owners publish facts, readers aggregate at read time. Use `bun ~/.agents/skills/poteto-mode/scripts/orch/orch.ts` for bookkeeping, written below as `orch`, while its canonical plain TSV and JSON stay readable without the CLI.
+Create `orchestrate/<project-slug>/` in a project-local decision store. Every file has exactly one writer. Owners publish facts, readers aggregate at read time. Resolve `scripts/orch/orch.ts` relative to this skill's discovered directory and run it with Bun for bookkeeping, written below as `orch`, while its canonical plain TSV and JSON stay readable without the CLI.
 
 - `preferences.md` is the standing-orders register: numbered lines, one constraint each (adapter routing policy, stack shape and count, verification bar, forbidden paths, escalation policy). Paste it verbatim into every start and every follow-up. Directives decay across resumes, and each dropped one costs a human turn. When you catch yourself restating an instruction, append the line before you act (principle-encode-lessons-in-structure).
 - `overview.md` is the durable PR and issue DB. Append. Never rewrite wholesale per event.
@@ -47,6 +47,7 @@ VERIFY       exact commands or the control-skill path, plus known gotchas
 TIMEBOX      rough cap on runtime. On expiry, return partial findings and stop rather than run on
 FORBIDDEN    no gt unless ROLE is the designated stacker. No rebase or force-push unless the
              stacker brief grants the exact operation. No fixes outside scope. Unit-specific bans
+
 REPORT       status, branch, head SHA, PRs, verdict, what you actually ran, deviations,
              suggested follow-ups
 STANDING     <preferences.md pasted verbatim>
@@ -64,6 +65,7 @@ A dependency is a context relay, not just ordering: undeclared upstream context 
 2. **Install the runtime.** Run `orch init`. Open the trail via the show-me-your-work skill, write the standing orders before any delegated start, and seed `frontier.json` from existing PRs with `orch frontier set --repo <repo-dir>`.
 3. **Pilot.** Push one unit through the whole path: brief, worker, verification, stack entry, ledger row, merge. The pilot exists to falsify the brief template, the verify recipe, and the unit size while that costs one agent instead of fifty. Fix the contract from pilot evidence before any fan-out. Scale the pilot to the unit: on programs of near-identical cheap units, the first unit is the pilot, run as a normal unit with its verify command inline, and fan-out starts the moment it lands. The dedicated pilot pipeline (separate verifier agent, audit gate) is for expensive or novel unit shapes, not for clone-units where a serialized pilot has nothing to falsify.
 4. **Scale.** Start a rolling window of workers up to the in-flight cap, refilling as children finish. Blocking batches pay the slowest child of every batch. Start track sub-coordinators only past the one-drain threshold in Roles. Recompute ready work after each drain. Relay upstream reports into downstream briefs. Keep sibling communication upward only. The sampled brief audit runs alongside the wave it samples and stops the next refill on failure, not the current one.
+
 5. **Drain.** Run the queue discipline below at every drain point.
 6. **Land.** Landing is continuous, never a terminal phase: integration starts with the first verified unit and runs alongside the remaining waves. On heavy repos the stacker is a standing role from wave one, integrating as units verify. On repos where local git is cheap, the coordinator lands verified units itself per Roles. Keep the frontier green before upper-stack work; Stack safety governs. Advance `frontier.json` only on merge or reported new head SHAs.
 7. **Close.** Drain the final inbox, reconcile every started session to a terminal row (done, abandoned, zombie-reconciled), confirm the predicate on the real artifact, confirm every landed PR has a verdict for its current head SHA, audit the trail per show-me-your-work including its independent reviewer pass, encode recurring corrections into `preferences.md` or the brief template. Leave the store intact. It is the postmortem.
@@ -79,11 +81,10 @@ A dependency is a context relay, not just ordering: undeclared upstream context 
 
 #### Stack safety
 
-The current `orch frontier set` command reads Graphite metadata and requires `gt`. This specialized program workflow retains that dependency. For a forge-neutral base-branch chain, use Autopilot-stack and Shipping instead. Do not claim that `orch` can discover an Origin or plain GitHub stack.
+- The frontier is a computed object, never narrative. Recompute `frontier.json` after every merge and stack mutation: ordered PR list, branch names, head SHAs, a generation number, the lowest unmerged PR. The command walks the PR base chain through the checkout's current branch, so chain order and PR states come from the forge. It uses `gh` by default. Pass `--forge origin` when the program resolved the forge to Origin. Head SHAs come from local branch refs, so resolve it from the stacker's clone. A branch with no PR errors rather than guessing.
+- Exactly one stacker per stack may mutate topology (chain rebases, force-pushes, base retargets, merges), serialized within its stack. Record the holder in the standing orders. Run large chain rebases in an isolated owner workspace.
+- Workers never rebase and never retarget or merge PRs. Babysitters follow `skill://poteto-mode/playbooks/babysit.md`, one per stack, scoped to one immutable frontier generation. They report conflicts to the stacker rather than rebasing.
 
-- The frontier is a computed object, never narrative. Recompute `frontier.json` from `gt` after every merge and stack mutation because GitHub base refs drift mid-restack while gt tracking is authoritative: ordered PR list, branch names, head SHAs, a generation number, the lowest unmerged PR. Resolve it where gt knows the stack, normally the stacker's clone. A checkout whose gt metadata never saw the submits reports no PRs and the command errors rather than guessing.
-- Exactly one stacker per stack may run `gt`, serialized within its stack. Record the holder in the standing orders. Restacks run in an isolated owner workspace. Avoid running a large restack on an interactive workstation.
-- Workers never rebase and never run `gt`. Babysitters follow `skill://poteto-mode/playbooks/babysit.md`, one per stack, scoped to one immutable frontier generation. They report conflicts to the stacker rather than restacking.
 - PR closes and retargets go through the stacker only. Closing a base PR orphans every chain above it. Merges and stack surgery are units with briefs like any other.
 - One retro watcher follows merged PRs for reverts, post-merge CI breaks, and orphaned follow-ups.
 
@@ -109,7 +110,7 @@ A unit is not done until its output is externalized the moment it lands, never b
 
 Reaches the human, batched into the status page rather than per item: irreversible actions (force-push to shared branches, deploys, deletions, closing someone else's PR), genuine product or preference calls no experiment settles, a standing order that contradicts observed reality, a program-level dead end that survived a replan. Park each as a `gates.md` entry before asking, and route work around it.
 
-Never reaches the human: frontier nudges, restack mechanics, retries, CI flake triage, review-thread triage, format fixes, scope the brief already forbids (refuse and continue), and "should I keep going". When in doubt, act and log.
+Never reaches the human: frontier nudges, rebase mechanics, retries, CI flake triage, review-thread triage, format fixes, scope the brief already forbids (refuse and continue), and "should I keep going". When in doubt, act and log.
 
 Mid-run discoveries fix only what blocks the frontier. Everything else parks in follow-ups. At this fan-out a small scope leak multiplies into PRs nobody asked for.
 

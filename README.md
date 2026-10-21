@@ -4,6 +4,8 @@
 
 An unofficial Oh My Pi-first port of Lauren Tan's Cursor pstack: deliberate workflows, native delegation, and evidence you can inspect.
 
+Cursor, Claude, and Grok users should use the original [Cursor pstack plugin](https://github.com/cursor/plugins/tree/main/pstack). This fork no longer ships a Claude Code plugin.
+
 ## Start with Oh My Pi
 
 Install from GitHub:
@@ -34,7 +36,7 @@ Subagents and review panels spend extra tokens. Setup can select cheaper support
 
 OMP has native task agents. Native Pi still needs `pi-subagents` for the same kind of per-role work. Cursor Custom Modes and `/loop` are source-host features; this port does not provide them.
 
-This package version is `0.15.13-omp.1`. That is a fork release on the Cursor `0.15.13` baseline at commit `77526ffa67f8dafc698d14b5356e6d4fc78c3127`, recorded in `upstream.lock.json`. Sync updates the source pin. It does not rewrite the fork version.
+The fork version is recorded in [package.json](package.json). The exact Cursor source version and commit are recorded separately in [upstream.lock.json](upstream.lock.json). Sync updates the source pin. It does not rewrite the fork version.
 
 ## Guides
 
@@ -43,6 +45,7 @@ This package version is `0.15.13-omp.1`. That is a fork release on the Cursor `0
 - [Runtime contract](skills/pstack-pi/references/runtime.md)
 - [Upstream reconciliation](docs/upstream-compatibility-design.md)
 - [Changes](CHANGES.md)
+- [Fork comparison and maintenance recommendation](docs/fork-assessment-2026-10.md)
 
 ## License and attribution
 

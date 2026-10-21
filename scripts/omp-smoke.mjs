@@ -54,7 +54,7 @@ try {
   const env = { ...baseEnv, PSTACK_OMP_SMOKE_TOKEN: credential };
   await writeFile(join(agentDir, "models.yml"), `providers:\n  ${JSON.stringify(provider)}:\n    apiKey: PSTACK_OMP_SMOKE_TOKEN\n`, { mode: 0o600 });
   const overlay = join(home, "omp-smoke.yml");
-  await writeFile(overlay, JSON.stringify({ task: { enableEffort: false, disabledAgents: ["designer", "librarian"] } }), { mode: 0o600 });
+  await writeFile(overlay, JSON.stringify({ task: { enableEffort: false, disabledAgents: ["designer", "librarian"], agentModelOverrides: { task: selector, scout: selector } } }), { mode: 0o600 });
   const keepLine = "fixture-preserve: this unrelated setting must survive\n";
   await writeFile(config, keepLine);
   const fixture = 'export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));\n';
@@ -167,7 +167,7 @@ try {
   scenarios.push({ name: "invalid-choices", noInvalidDispatch: true, settingsPreserved: true, supportedThinkingApplied: thinking });
 
   await rpc.command({ type: "new_session" });
-  const workflow = await turn("workflow", `${advice.workflowCommand} Investigate fixture.mjs without editing it. Use canonical planner and researcher roles, mapped through pstack-pi to the available native agents; designer and librarian are disabled. Start independent planning/research together with standalone briefs and ${selector}. The planner must report PLAN_NATIVE_PROOF and the researcher RESEARCH_NATIVE_PROOF plus the actual results of clamp(-2,0,5) and clamp(9,0,5). Read each full child result through its native agent resource, not a preview. Return only JSON with lower: 0, upper: 5, and consumedReports listing both proof markers.`);
+  const workflow = await turn("workflow", `${advice.workflowCommand} Investigate fixture.mjs without editing it. Use canonical planner and researcher roles, mapped through pstack-pi to the available native agents; designer and librarian are disabled. Start independent planning/research together with standalone briefs. This fixture already configures task.agentModelOverrides for task and scout to ${selector}. Keep the existing routing settings. The planner must report PLAN_NATIVE_PROOF and the researcher RESEARCH_NATIVE_PROOF plus the actual results of clamp(-2,0,5) and clamp(9,0,5). Read each full child result through its native agent resource, not a preview. Return only JSON with lower: 0, upper: 5, and consumedReports listing both proof markers.`);
   const tasks = toolCalls(workflow.frames).filter(frame => toolName(frame) === "task");
   assert.ok(tasks.length > 0, "workflow did not invoke native task");
   const participants = tasks.flatMap(frame => frame.args?.tasks ?? [frame.args]);
@@ -175,7 +175,7 @@ try {
   for (const participant of participants) {
     assert.ok(!["designer", "librarian"].includes(participant.agent), "disabled agent reached dispatch");
     assert.ok(participant.effort === undefined, "hidden effort field reached dispatch");
-    if (participant.model !== undefined) assert.equal(participant.model, selector, "workflow substituted the selected model");
+    assert.equal(participant.model, undefined, "ordinary OMP tasks must use configured agent routing, not the seance-only model field");
   }
   const fullReads = toolCalls(workflow.frames).filter(frame => toolName(frame) === "read" && /^agent:\/\//u.test(frame.args?.path ?? ""));
   assert.ok(fullReads.length >= 2, "workflow did not consume full native child results");
@@ -185,7 +185,7 @@ try {
   const deliveries = workflow.frames.filter(frame => frame.type === "tool_execution_end" && toolName(frame) === "read" && textOf(frame.result).includes("NATIVE_PROOF"));
   assert.ok(deliveries.some(frame => textOf(frame.result).includes("PLAN_NATIVE_PROOF")) && deliveries.some(frame => textOf(frame.result).includes("RESEARCH_NATIVE_PROOF")), "proof markers did not arrive through real full-result reads");
   assert.equal(await readFile(join(project, "fixture.mjs"), "utf8"), fixture);
-  scenarios.push({ name: "workflow", participants: participants.map(item => ({ name: item.name, agent: item.agent ?? "default (omitted)", model: item.model ?? "inherited" })), fullResultReads: fullReads.length, lower: report.lower, upper: report.upper });
+  scenarios.push({ name: "workflow", participants: participants.map(item => ({ name: item.name, agent: item.agent ?? "default (omitted)" })), configuredAgentModel: selector, fullResultReads: fullReads.length, lower: report.lower, upper: report.upper });
 
   await rpc.command({ type: "new_session" });
   const lifecycle = await turn("lifecycle", `/skill:pstack-pi Launch node async-marker.mjs using the live native bash async facility, not a shell background process. After launching, write the manual checkpoint and stop that turn so the host can yield while the finite job is still pending. Do not wait, poll, sleep, or inspect ASYNC_DONE in the launch turn. Consume the native delivery on the follow-up wake, then inspect ASYNC_DONE. An hourly audit was requested, but this fixture has no scheduler capability: do not install or promise one. Record a manual checkpoint at .pstack/hourly-audit.md with the next exact command and explain that a completed agent id cannot revive a session. Finish only when the finite job and checkpoint are complete.`);

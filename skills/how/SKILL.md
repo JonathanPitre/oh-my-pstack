@@ -6,43 +6,31 @@ disable-model-invocation: true
 
 # How
 
-Follow the [portable runtime contract](../pstack-pi/references/runtime.md) for explorer and synthesizer roles, model choices, and host fallbacks.
-
 Explore the codebase to answer "how does X work?" questions. Produce architectural explanations at the level of a senior engineer onboarding onto a subsystem, enough to build a working mental model, not so much that it reads like annotated source code.
 
-Use the `how explorer` and `how explainer` lines from `$PSTACK_CONFIG` when that variable is set, otherwise `.pstack/config.md`. Pass a per-item `model` only when the live task schema exposes that field and the value is in the live inventory. Leave the model unset for `auto` or `inherit-parent` when the host can pass the parent model to a child. If the host rejects a configured choice, honor its documented rejection and fallback policy and report the gap; do not guess a vendor family or substitute a default slug. A missing child facility is a capability gap: the root may explore on the active model, but it must not claim independent explorer or explainer children ran.
+Follow the [portable runtime contract](../pstack-pi/references/runtime.md) for child roles, models, and capability gaps. The root starts every child. Use the `how explorer` and `how explainer` choices from `$PSTACK_CONFIG` when set, otherwise `.pstack/config.md`. Without a configured choice, map the canonical `explorer` and `synthesizer` roles through the live host inventory. Route models through the selected ordinary agent's supported mechanism and verify resolved metadata. Never guess a model slug. If children are unavailable, the root may explain directly but must report the missing independent exploration or synthesis.
 
-## Step 1. Assess Complexity
+## 1. Assess complexity
 
 If the scope is ambiguous, state your interpretation and explore. The user can redirect.
 
-- **Simple** (a single module, a small utility, a narrow question such as "how does function X work"): no explorers. One explainer explores and explains in a single pass. Go to Step 2b.
-- **Complex** (a subsystem spanning multiple files or services, a cross-cutting feature, a full architectural overview): spawn parallel explorers first, then hand off to the explainer. Go to Step 2a.
+- **Simple** (a single module, a small utility, a narrow question such as "how does function X work"): no explorers. Spawn one explainer that explores and explains in one pass, built from `references/explainer-prompt.md` without the explorer-findings section. Go to step 4.
+- **Complex** (a subsystem spanning multiple files or services, a cross-cutting feature, a full architectural overview): go to step 2.
 
 When in doubt, take the simple path.
 
-## Step 2a. Explore (complex questions only)
+## 2. Explore (complex only)
 
-Decompose the question into 2 to 4 exploration angles, each a distinct slice of the subsystem. The root launches all explorers concurrently through the host's task facility. Use the configured `how explorer` choice when present; otherwise map the canonical `explorer` role through the live host inventory. Every explorer is read-only and receives a standalone brief.
+Decompose the question into 2 to 4 angles, each a distinct slice of the subsystem. The root starts all read-only explorers concurrently within host capacity, each with `references/explorer-prompt.md` and its angle filled in.
 
-Each explorer gets the prompt in `references/explorer-prompt.md` with its angle filled in. Then go to Step 3.
+## 3. Synthesize (complex only)
 
-## Step 2b. Direct Explain (simple questions)
+Once all explorers have returned, spawn one explainer with `references/explainer-prompt.md` and every explorer's findings filled in.
 
-The root launches one read-only child that explores and explains in one pass. Use the configured `how explainer` choice when present; otherwise map the canonical `synthesizer` role through the live host inventory.
+## 4. Present
 
-Build its prompt from `references/explainer-prompt.md` without the explorer-findings section. Go to Step 4.
+Present the explainer's output. Light edits for clarity or context from the conversation are fine. Do not substantially rewrite it.
 
-## Step 3. Synthesize (complex questions only)
-
-Once all explorers return, the root launches one read-only child to synthesize their findings into a coherent explanation. Use the configured `how explainer` choice when present; otherwise map the canonical `synthesizer` role through the live host inventory.
-
-Build its prompt from `references/explainer-prompt.md` with every explorer's findings filled in.
-
-## Step 4. Present
-
-Present the explainer's output to the user. Light edits for clarity or context from the conversation are fine. Do not substantially rewrite it.
-
-## Output Format
+## Output format
 
 The explanation uses the sections defined in `references/explainer-prompt.md`, dropping any that do not apply: Overview, Key Concepts, How It Works, Where Things Live, Gotchas.

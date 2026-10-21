@@ -38,7 +38,49 @@ jobs:
       - id: update
         name: Apply upstream update and detect owned changes
         run: |
-          node scripts/sync-upstream.mjs --apply
+          status=0
+          node scripts/sync-upstream.mjs --apply || status=$?
+          if [[ "$status" -eq 2 ]]; then
+            review="${RUNNER_TEMP}/pstack-review"
+            node scripts/sync-upstream.mjs --export-review "$review"
+            node --input-type=module - "$review" <<'NODE'
+          import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+          import { join } from "node:path";
+          import { execFileSync } from "node:child_process";
+          const review = process.argv[2];
+          const manifest = JSON.parse(readFileSync(join(review, "manifest.json"), "utf8"));
+          const conflicts = manifest.entries.filter(entry => entry.outcome.kind === "conflict");
+          if (!conflicts.length) throw new Error("Apply exited 2 but review export contains no conflicts.");
+          const base = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+          const summary = [
+            "## Upstream sync needs manual review",
+            "",
+            `${conflicts.length} conflicts require explicit decisions. No managed files or lock were changed. No update PR will be opened.`,
+            "",
+            `Validation base: ${base}`,
+            `Pinned upstream: ${manifest.lock.commit}`,
+            `Incoming upstream: ${manifest.commit}`,
+            "",
+            "Download the upstream-review artifact from this run. It contains manifest.json and entries/<id>/{base,local,incoming,proposal}.txt snapshots where present.",
+            "",
+            ...conflicts.map(entry => `- ${JSON.stringify(entry.path)} (entry ${entry.id}): ${entry.outcome.reason}`),
+            "",
+            "In a disposable checkout of the validation base, keep the downloaded review directory outside the checkout. Use an upstream source checkout at the incoming commit with --source DIR so later upstream changes cannot change the reviewed input.",
+            'For each conflicting manifest entry, set decision to {"kind":"write","reason":"..."} and save the resolved text without conflict markers as entries/<id>/resolved.txt. For deletion, use {"kind":"delete","reason":"..."}. Reasons must be nonempty. Leave other entries unchanged.',
+            "",
+            "Run `node scripts/sync-upstream.mjs --apply --review /path/to/pstack-review --source /path/to/upstream-source --dry-run`. Inspect the result, then remove --dry-run to apply and run package verification before proposing the changes.",
+            "",
+          ].join("\n");
+          writeFileSync(join(review, "review-summary.md"), summary);
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+          NODE
+            echo "::warning::Upstream conflicts require manual review. Download the upstream-review artifact and follow the job summary."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "review-required=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [[ "$status" -ne 0 ]]; then
+            exit "$status"
+          fi
           if [[ -n "$(git status --porcelain --untracked-files=all -- ':(exclude)skills' ':(exclude)upstream.lock.json' ':(exclude)**/node_modules/**')" ]]; then
             echo "Sync changed files outside proposal ownership." >&2
             git status --porcelain
@@ -49,6 +91,15 @@ jobs:
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
+      - if: steps.update.outputs.review-required == 'true'
+        name: Upload conflict review artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: upstream-review
+          path: ${{ runner.temp }}/pstack-review
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 14
       - if: steps.update.outputs.changed == 'true'
         name: Verify package
         run: |
@@ -59,6 +110,7 @@ jobs:
         run: |
           npm run test:sync
           npm run test:proposal
+          node --test scripts/worktree-audit.test.mjs
       - if: steps.update.outputs.changed == 'true'
         name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -66,7 +118,7 @@ jobs:
         name: Test bundled scripts
         run: |
           bun install --cwd skills/poteto-mode/scripts --frozen-lockfile
-          bun test orch watch-pr
+          bun test orch watch-pr check-plan.test.ts
           bun run --cwd skills/poteto-mode/scripts typecheck
       - if: steps.update.outputs.changed == 'true'
         id: proposal
