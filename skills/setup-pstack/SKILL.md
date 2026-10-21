@@ -43,19 +43,21 @@ limitation instead of substituting a Pi-specific mechanism.
 
 ### OMP delegation prerequisite
 
-OMP already exposes native `task` agents and a per-item `model` field. Do not
+OMP exposes native `task` agents. [OMP 18.12.5](https://github.com/can1357/oh-my-pi/blob/v18.12.5/docs/task-agent-discovery.md)
+reserves the task item's `model` field for `seance`, which consults old sessions.
+Do not use `seance` for workers or pass `model` to ordinary task agents. Do not
 install `pi-subagents`, write `.pi/settings.json`, or modify global OMP settings.
-Use the live task schema, available-command catalog, and confirmed
-`provider/model` selectors. When `task.enableEffort` is false, omit `effort` and
-keep a supported thinking selector in the model value.
+Use discovered agents, native project agent settings, and confirmed selectors.
+When `task.enableEffort` is false, omit `effort`; encode a supported thinking
+level in the native agent model selector when the host supports it.
 
 ### 1. Detect available choices
 
 Detect these capabilities independently:
 
 1. The model IDs the current host actually exposes.
-2. Whether the current host exposes a task or subagent facility that can select a
-   model for each child.
+2. Whether the current host exposes a task or subagent facility and how the
+   selected ordinary agent receives its model choice.
 3. Whether that facility accepts a separate reasoning effort or exposes model variants
    with documented effort levels. Record only the supported values and mappings.
 
@@ -70,11 +72,11 @@ If the host has a task facility but cannot enumerate models, use only a host rol
 mapping that the facility documents. Do not ask the user to invent a raw slug.
 `inherit-parent` is valid only when the host can pass the current model to a child.
 
-When the live task schema exposes a per-item `model` field, record that OMP and
-compatible hosts can assign a model per child. Do not omit or forbid that field
-to compensate for a stale example. When `task.enableEffort` is false, do not
-record or dispatch a hidden `effort` field; keep a supported thinking selector
-in the model value, such as `provider/model:low`.
+Treat a per-item `model` field as usable only when the selected ordinary agent
+supports it. On OMP 18.12.5, use `task.agentModelOverrides`, discovered project
+agents, or documented role aliases instead. When `task.enableEffort` is false,
+do not dispatch a hidden `effort` field. Confirm the chosen agent and model in
+the returned metadata before treating a workflow choice as applied.
 
 ### 2. Load current state
 
@@ -93,15 +95,14 @@ Once per-child selection is available, ask for a reasoning budget. Name the curr
 budget when the configuration records one. Offer these choices through the host's
 structured interaction tool when available; the root owns the question:
 
-- `unlimited`. Keep the current reasoning levels, including max where supported.
+- `unlimited`. Target max reasoning where supported.
 - `large`. Target xhigh reasoning.
 - `medium`. Target high reasoning.
 - `small`. Target medium reasoning.
 
 Apply the budget to the current role table, including each panel entry. Preserve
-model families, panel membership, and supported aliases. `unlimited` preserves the
-current efforts. The other budgets select the highest supported effort at or below
-the target on the ladder `max` > `xhigh` > `high` > `medium` > `low`.
+model families, panel membership, and supported aliases. Every budget selects
+the highest supported effort at or below its target on the ladder `max` > `xhigh` > `high` > `medium` > `low`.
 
 Use a separate reasoning argument only when the host's child facility exposes it.
 If the host encodes reasoning in model IDs, select only detected IDs whose family
@@ -113,7 +114,7 @@ the host exposes no reasoning control, report that limitation and preserve its
 model choices. Do not record an applied budget or reasoning override in that case.
 A budget is a reasoning preference, not a monetary limit.
 
-If both model inventory and per-child model selection are available, show every
+If both model inventory and native child model routing are available, show every
 workflow role with its current concrete `provider/model-id` choice and supported
 reasoning level. Distinguish applied efforts from host defaults. Mark an
 explicit model absent from the live inventory as needing a replacement. Also list
@@ -146,9 +147,11 @@ a selected explicit model is unavailable, or a reasoning value is unsupported,
 stop, report both rejected choices, and ask for a replacement. Never
 write a configuration that requires another host. Never write a guessed vendor
 slug, silently substitute a model, or dispatch a child to work around an invalid
-choice. On OMP, write only the selected project configuration, typically
-`.pstack/config.md`; do not create `.pi/settings.json` or modify global
-settings.
+choice. On OMP, write no global settings. The portable `.pstack/config.md`
+records preferences. Bind each choice through supported project-local OMP
+settings or agent frontmatter before calling it active. If that binding is
+unavailable, report the preference as inactive and the child as inherited or
+host default.
 
 ### 5. Write the configuration
 
@@ -157,16 +160,15 @@ needed and overwrite the selected file so re-runs remain idempotent. Preserve
 unrelated existing lines that are still valid, including comments and
 non-role configuration, unless the user asked to replace them. Preserve the
 confirmed role choices and record the applied budget as `# budget: <label> (<target>)`.
-For `unlimited`, record `# budget: unlimited (keep current efforts)`. Omit the budget
+For `unlimited`, record `# budget: unlimited (max)`. Omit the budget
 line if the host has no reasoning control. When the host accepts separate reasoning
 arguments, add `<workflow role> reasoning: <effort>` entries. Panel reasoning lists
 must match the model list in length and order, using `host-default` for entries
 without an explicit effort. Keep those entries out of model ID values. Use concrete
 detected model IDs in this shape. Replace every placeholder with a model the
 current host reported, and use `inherit-parent` only when the host supports it.
-Panel examples below have three seats, matching current upstream defaults; keep a
-user's longer or shorter confirmed list. A confirmed one-entry panel is one
-participant, not an implicit three-seat default:
+Panel examples below have two seats. Keep the user's longer or shorter confirmed list. A confirmed one-entry panel is one
+participant, not an implicit two-seat default:
 
 ```md
 # pstack role and model configuration
@@ -185,11 +187,11 @@ reflect tooling: <researcher-model>
 reflect judgment: <reviewer-model>
 reflect divergent: <divergent-model>
 reflect synthesizer: <synthesizer-model>
-arena runners: <planner-model>, <reviewer-model>, inherit-parent
-arena cross-judge pool: <reviewer-model>, <planner-model>, inherit-parent
+arena runners: <planner-model>, <reviewer-model>
+arena cross-judge pool: <reviewer-model>, <planner-model>
 swarm workers: <implementer-model>
-architect runners: <planner-model>, <reviewer-model>, inherit-parent
-interrogate reviewers: <reviewer-model>, <planner-model>, inherit-parent
+architect runners: <planner-model>, <reviewer-model>
+interrogate reviewers: <reviewer-model>, <planner-model>
 ```
 
 For Pi with `pi-subagents`, also preserve unrelated keys and update the project's
@@ -220,6 +222,7 @@ Write the selected IDs under `subagents.agentOverrides.<agent>.model`:
     }
   }
 }
+
 ```
 
 Write host-specific reasoning settings only when the detected host facility
@@ -230,10 +233,17 @@ For OpenCode, do not write `.pi/settings.json`. Keep the concrete model choices 
 the user's existing `opencode.json` or `opencode.jsonc`, and use the live
 OpenCode agent names in the pstack role map. Preserve unrelated configuration.
 
-For OMP, do not write `.pi/settings.json` or global `config.yml`. Keep confirmed
-role choices in the selected project configuration, typically `.pstack/config.md`,
-and route children through the live task schema. Preserve unrelated existing
-lines. Confirm the project save with the host's structured ask tool.
+For OMP, keep role preferences in `.pstack/config.md` and bind supported
+assignments in project `.omp/config.yml`. `task.agentModelOverrides` maps a
+discovered agent name to a confirmed selector or `@role` alias; `modelRoles`
+resolves the alias. If two workflow roles or panel seats need different models
+but share a built-in agent, create distinct project `.omp/agents/*.md` definitions
+with a suitable specialist prompt and frontmatter `model: "@role"`, then verify
+that OMP discovers those names. Preserve unrelated settings and agent files.
+Dispatch with the chosen agent name and without a task-item `model`. If the
+project cannot install the required native mapping, keep the role preference
+inactive and report inherited or default routing. Never write global
+`config.yml` or `.pi/settings.json` for OMP.
 
 ### 6. Confirm
 
@@ -243,7 +253,8 @@ any unsupported budget choices and any roles that retain host defaults. List any
 retired lines that were dropped. For Pi, name both `.pstack/config.md`
 and `.pi/settings.json`, and tell the user to run `/subagents-models` to inspect
 the live mapping. For OpenCode, name the `opencode.json` or `opencode.jsonc`
-path used. For OMP, name the selected project configuration path only. State that
+path used. For OMP, name both the `.pstack` preference and each native project
+setting or agent definition that activates it. State that
 configuration does not create models, child agents, permissions, or
 delegation facilities.
 
@@ -254,3 +265,7 @@ single Pi session model.
 ### 7. Offer a verification skill (optional)
 
 Check whether the project has a way to drive the real app for proof, such as a `verify-*` skill or an existing harness. If not, offer once to invoke the sibling **create-verification-skill** skill. On no, move on without pushing.
+
+### 8. Offer a formal verification skill (optional)
+
+If the project has no skill that runs a model checker or proof, offer once to invoke the sibling **create-formal-verification-skill** skill. On no, move on without pushing.

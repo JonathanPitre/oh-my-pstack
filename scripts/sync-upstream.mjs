@@ -124,7 +124,6 @@ function decodeUtf8(raw, label) {
 
 const FORK_MANIFEST_PATHS = [
   "package.json",
-  ".claude-plugin/plugin.json",
   ".codex-plugin/plugin.json",
 ];
 

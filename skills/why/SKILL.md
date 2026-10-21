@@ -8,11 +8,9 @@ disable-model-invocation: true
 
 Follow the [portable runtime contract](../pstack-pi/references/runtime.md) for tool discovery, researcher and synthesizer roles, model choices, concurrency, and unavailable-capability reporting.
 
-Investigate the motivation and intent behind code.
+Investigate the motivation and intent behind code. The companion **how** skill explains what the code does; **why** investigates the forces behind its shape.
 
-Companion to the `how` skill. `how` answers what the code does and how it works. `why` answers what forces led to its shape.
-
-Use the `why investigators` and `why synthesizer` lines from `$PSTACK_CONFIG` when that variable is set, otherwise `.pstack/config.md`. Pass a per-item `model` only when the live task schema exposes that field and the value is in the live inventory. Leave the model unset for `auto` or `inherit-parent` when the host can pass the parent model to a child. If the host rejects a configured choice, honor its documented rejection and fallback policy and report the gap; do not guess a vendor family or substitute a default slug. A missing child facility is a capability gap: the root may investigate on the active model, but it must not claim independent investigator or synthesizer children ran.
+Use the `why investigators` and `why synthesizer` lines from `$PSTACK_CONFIG` when that variable is set, otherwise `.pstack/config.md`. Route each choice through the portable runtime contract and verify its resolved model. Leave the model unset for `auto` or `inherit-parent` when the host can pass the parent model to a child. If the host rejects a configured choice, honor its documented rejection and fallback policy and report the gap; do not guess a vendor family or substitute a default slug. A missing child facility is a capability gap: the root may investigate on the active model, but it must not claim independent investigator or synthesizer children ran.
 
 ## Operating Posture
 
@@ -20,46 +18,17 @@ Operate as a **careful, cautious, and precise investigator**. Be honest about wh
 
 ## Step 1. Understand the Target and the Question
 
-Parse what the user is asking. The **target** is usually a chunk of code, a pattern, a feature, or a named design decision. The **question** is usually a design rationale, a tradeoff, a motivating edge case, an external constraint, dead code, or a broad history sweep.
+The **target** is usually a chunk of code, a pattern, a feature, or a named design decision. The **question** is usually a design rationale, a tradeoff, a motivating edge case, an external constraint, dead code, or a broad history sweep.
 
 If the target is vague ("why do we do it this way?" with no clear referent), make your best guess from conversation context (open files, recent edits, active selection when exposed, and what was just discussed). State your interpretation briefly so the user can redirect if you're off, then proceed.
 
 ## Step 2. Establish the Code Anchor
 
-Before spawning investigators, anchor the investigation in concrete code. You need:
+Before spawning investigators, build the seed context inline: file paths and line ranges, key symbols (functions, classes, constants), the last few commits touching the target, PR numbers from merge commits (pattern `(#1234)` in the subject line), and any linked ticket IDs. Run `git blame -L <start>,<end> <file>` for last-touch commits, `git log --follow -p -- <file>` for full history with patches through renames, `git log --oneline -20 -- <file>` for recent commits with PR numbers visible, and `git log -1 --format=%B <commit>` to extract PR numbers. Then pull the PR bodies and discussion for any substantive commit: `gh pr view <number> --json title,body,author,createdAt,mergedAt,labels,closingIssuesReferences,comments,reviews`. This anchor goes to every investigator and to the synthesizer.
 
-- The relevant file path(s) and line range(s)
-- The key symbols (function names, class names, constants)
-- An initial commit list. The last few commits touching the target.
-- PR numbers from merge commits (pattern `(#1234)` in the subject line)
+## Step 3. Spawn Parallel Investigators
 
-Build this inline.
-
-```bash
-# Blame target lines for last-touch commits
-git blame -L <start>,<end> <file>
-
-# Full file history, with patches, through renames
-git log --follow -p -- <file>
-
-# Last N commits touching the file, PR numbers visible
-git log --oneline -20 -- <file>
-
-# Extract PR numbers from a commit message
-git log -1 --format=%B <commit>
-```
-
-Pull PR bodies and discussion via `gh` for any substantive commits:
-
-```bash
-gh pr view <number> --json title,body,author,createdAt,mergedAt,labels,closingIssuesReferences,comments,reviews
-```
-
-Capture this as seed context (file paths, symbols, commits, PR numbers, linked ticket IDs). Pass it to the investigators.
-
-## Step 3. Spawn Parallel Investigators (default posture)
-
-**Default to the full parallel investigation.**
+**Default to the full parallel investigation.** The goal is a complete coverage map, not a minimal one. Document the null, don't skip the search.
 
 ### Discovery
 
@@ -77,24 +46,18 @@ Map each available MCP to one evidence category:
 
 Source control is always available through git and `gh`. For the other six, classify using the MCP name, server instructions, tool names, and resource descriptors. If an MCP could fit more than one category, choose the one matching its primary evidence. Record ambiguous cases in the coverage map.
 
-Aim for a complete **coverage map**, not a minimal one. Document the null, don't skip the search.
-
 The root launches all matching investigators concurrently through the host's task facility. Don't ask one agent to cover multiple MCPs.
 
 For each category, use the configured `why investigators` choice when present; otherwise map the canonical `researcher` role through the live host inventory. Give investigators access to the matching host tool while forbidding writes in every standalone brief. If the host cannot combine a read-only repository posture with external-tool access, preserve tool access and enforce no writes in the brief rather than assuming a vendor-specific mode.
 
-Each investigator gets:
-1. The base prompt from `references/investigator-prompt.md`
-2. The category playbook `references/sources/<source>.md` for the selected MCP, adapted from the examples in `references/source-playbook.md`
-3. The cross-cutting `references/sources/incident-postmortem.md` **if the target code looks defensive** (null checks, retry logic, timeout handling, rate limiting, feature flags, egress guards, OOM handlers)
-4. The code anchor from Step 2 (file paths, symbols, commit hashes, PR numbers, ticket IDs)
-5. The user's original question
+Each investigator's prompt is `references/investigator-prompt.md` filled in, plus:
+- the category playbook `references/sources/<source>.md` for the selected MCP, adapted from the examples in `references/source-playbook.md`
+- `references/sources/incident-postmortem.md` **if the target code looks defensive** (null checks, retry logic, timeout handling, rate limiting, feature flags, egress guards, OOM handlers)
+- the code anchor and the user's original question
 
-### Investigator roster. One per available evidence category
+### Investigator roster, one per available evidence category
 
-Spawn one investigator per category that has a matching MCP. Each owns exactly one tool or MCP.
-
-Each entry names the category and the kind of "why" it uniquely surfaces. Use it to know what to expect back, how to name a gap when a category returns empty, and (only in the rare provably-irrelevant case) to justify a skip.
+Each category below is uniquely positioned to surface one shape of "why", shown after "Best at". Use it to know what to expect back, to name a gap when a category returns empty, and, only in the rare provably-irrelevant case, to justify a skip.
 
 1. **Source control investigator**. Git history, `gh` for PRs, code comments, tests. Always spawn. The only guaranteed source. Best at surfacing *implementation-time rationale captured during review*.
 2. **Issue / ticket tracker investigator** (e.g. Linear, Jira, GitHub Issues, Plane, Shortcut MCP). Best at surfacing *the product or business forcing function*. Strongest when the why is external to engineering.
@@ -106,10 +69,10 @@ Each entry names the category and the kind of "why" it uniquely surfaces. Use it
 
 ### When to skip an investigator
 
-Only skip with an **explicit, written justification** that goes in the final "Sources Consulted" section. Two valid reasons:
+Only with an **explicit, written justification** that goes in the final Sources Consulted. Two valid reasons:
 
-- **No MCP is available for that category** in this environment. Flag this as a gap, not a choice. Example: "Real-time team chat skipped. No matching MCP available, so the conversational record was not searchable."
-- **The source is provably irrelevant**, not just "probably irrelevant." A high bar. Example: "Error / exception tracking skipped. Target is a build-time script with no runtime code path."
+- **No MCP is available for that category** in this environment. Flag it as a gap, not a choice: "Real-time team chat skipped. No matching MCP available, so the conversational record was not searchable."
+- **The source is provably irrelevant**, not just "probably irrelevant." A high bar: "Error / exception tracking skipped. Target is a build-time script with no runtime code path."
 
 If your scope assessment suggests a single-commit trivial target where the PR description already contains the complete answer, you may answer inline **only after** confirming all seven available category searches would be redundant. Say so explicitly. This should be rare.
 
@@ -118,8 +81,9 @@ If your scope assessment suggests a single-commit trivial target where the PR de
 The root launches one `synthesizer` child, using the configured `why synthesizer` choice when present. Give it the host tools needed to spot-verify citations while forbidding repository writes in its standalone brief.
 
 The synthesizer gets:
+
 1. The investigator findings, including any null results and any categories skipped with justification
-2. The code anchor from Step 2 (file paths, symbols, commit hashes, PR numbers, ticket IDs)
+2. The code anchor
 3. The user's original question
 4. The epistemics framework from `references/epistemics.md`
 5. The synthesizer prompt template from `references/synthesizer-prompt.md`
@@ -130,18 +94,10 @@ Take the synthesizer's output and present it to the user. You may lightly edit f
 
 ## Output Format
 
-The output structure is the one in `references/synthesizer-prompt.md`: The Question, The Code in Question, What We Found, What We Can Reasonably Infer, Competing Hypotheses, What We Don't Know, Sources Consulted, Confidence Summary. Adapt as needed, but keep the confidence separation intact, and keep Sources Consulted as one line per investigator, including the ones that returned nothing or were skipped, with the reason.
+The structure is the one in `references/synthesizer-prompt.md`: The Question, The Code in Question, What We Found, What We Can Reasonably Infer, Competing Hypotheses, What We Don't Know, Sources Consulted, Confidence Summary. Adapt as needed, but keep the confidence separation intact, and keep Sources Consulted as one line per investigator, including the ones that returned nothing or were skipped, with the reason.
 
-After the Sources Consulted block, if the user's `why` question is a precursor to actually changing this code, convert the lineage findings into a Preserve / Change / Avoid / Risk constraint set suitable for planning the change.
+After Sources Consulted, if the user's `why` question is a precursor to changing this code, convert the lineage findings into a Preserve / Change / Avoid / Risk constraint set for planning the change.
 
 ## Common Failure Modes to Avoid
 
 - **Recency bias**. Assuming the most recent commit is authoritative. The current shape is often the accretion of many earlier decisions. Trace back.
-
-## Reference Files
-
-- `references/epistemics.md`. Confidence tiers and phrasing guide. The synthesizer must follow it.
-- `references/investigator-prompt.md`. Base prompt template for investigator subagents.
-- `references/source-playbook.md`. Index pointing at the category playbooks below.
-- `references/sources/*.md`. One self-contained example playbook per category, plus cross-cutting `incident-postmortem.md`. Give an investigator the single file that matches its category and adapt it to the available MCP.
-- `references/synthesizer-prompt.md`. Prompt template for the synthesizer subagent, including the output format.

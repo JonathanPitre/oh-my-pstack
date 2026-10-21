@@ -14,7 +14,8 @@
    7. Do it cheaper.
 
    When an earlier mantra meets the target, stop.
-3. Plan the fix from the trace. If it crosses a function boundary, `architect` first. Delegate implementation through the active adapter's **Bounded session** protocol with canonical `implementer` role. Select the playbook's model from `$PSTACK_CONFIG/.pstack/config.md` when the live schema accepts a per-item model. Honor host rejection and fallback. Report an unavailable choice instead of substituting a guessed model. If the host cannot start a child, own the diff yourself with the same review separation. Review the artifact yourself. Capture a post-fix trace.
+3. Plan the fix from the trace. If it crosses a function boundary, `architect` first. Delegate implementation through the active adapter's **Bounded session** protocol with canonical `implementer` role. Route the playbook choice through the active adapter and verify the resolved model. Honor host rejection and fallback. Report an unavailable choice instead of substituting a guessed model. If the host cannot start a child, own the diff yourself with the same review separation. Review the artifact yourself. Capture a post-fix trace.
+
    Apply the **sequence-verifiable-units** principle skill, verifying each attempt before trying the next.
 4. Parse and compare the artifacts (JSON to sqlite, diff). "Inconclusive" or wrong-surface is not a pass. Flag it.
 5. Cite the measurement in the PR.

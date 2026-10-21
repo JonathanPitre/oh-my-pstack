@@ -15,13 +15,13 @@ const requestedSource = process.env.PSTACK_INSTALL_SOURCE ?? "candidate";
 const requiredSkills = ["setup-pstack", "poteto-mode"];
 const hostBins = Object.fromEntries([
   ["omp", "PSTACK_OMP_BIN"], ["pi", "PSTACK_PI_BIN"],
-  ["opencode", "PSTACK_OPENCODE_BIN"], ["claude", "PSTACK_CLAUDE_BIN"],
+  ["opencode", "PSTACK_OPENCODE_BIN"],
   ["codex", "PSTACK_CODEX_BIN"], ["gemini", "PSTACK_GEMINI_BIN"],
 ].map(([host, variable]) => [host, process.env[variable] ?? host]));
 const selectedHosts = new Set(process.env.PSTACK_INSTALL_HOSTS === undefined
   ? Object.keys(hostBins)
   : process.env.PSTACK_INSTALL_HOSTS.split(",").map(host => host.trim()));
-if ([...selectedHosts].some(host => !Object.hasOwn(hostBins, host))) throw new Error("PSTACK_INSTALL_HOSTS must contain comma-separated host keys: omp, pi, opencode, claude, codex, gemini");
+if ([...selectedHosts].some(host => !Object.hasOwn(hostBins, host))) throw new Error("PSTACK_INSTALL_HOSTS must contain comma-separated host keys: omp, pi, opencode, codex, gemini");
 const envAllowlist = ["PATH", "LANG", "LC_ALL", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS", "GIT_SSL_CAINFO"];
 const liveHome = process.env.HOME ?? "";
 const livePaths = [
@@ -151,7 +151,6 @@ async function setup(host) {
     Object.assign(env, { HOME: home, XDG_CONFIG_HOME: join(home, ".config"), XDG_DATA_HOME: join(home, ".local", "share"), XDG_CACHE_HOME: join(home, ".cache"), XDG_STATE_HOME: join(home, ".local", "state"), TMPDIR: join(home, "tmp") });
     if (host === "pi") Object.assign(env, { PI_CODING_AGENT_DIR: join(home, ".pi", "agent"), PI_OFFLINE: "1", PI_TELEMETRY: "0" });
     if (host === "omp") env.PI_CODING_AGENT_DIR = join(home, ".omp", "agent");
-    if (host === "claude") Object.assign(env, { CLAUDE_CONFIG_DIR: join(home, ".claude"), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1" });
     if (host === "codex") env.CODEX_HOME = join(home, ".codex");
     if (host === "gemini") {
       env.GEMINI_CLI_SYSTEM_SETTINGS_PATH = join(home, "empty-system.json");
@@ -258,21 +257,6 @@ async function opencodeInstall(ctx, global) {
   ctx.installed = true;
 }
 
-async function claudeInstall(ctx) {
-  const installed = async () => JSON.parse(await command(hostBins.claude, ["plugin", "list", "--json"], ctx));
-  if (!ctx.installed) assert.ok(!(await installed()).some((entry) => entry.id === "pstack-pi@oh-my-pstack"), "Claude baseline already contains pstack");
-  await command(hostBins.claude, ["plugin", "marketplace", "add", ctx.public ? "JonathanPitre/oh-my-pstack" : ctx.source], ctx);
-  await command(hostBins.claude, ["plugin", "install", "pstack-pi@oh-my-pstack"], ctx);
-  const plugin = (await installed()).find((entry) => entry.id === "pstack-pi@oh-my-pstack");
-  assert.equal(plugin?.enabled, true, "Claude installed plugin is not enabled");
-  assert.ok(under(plugin.installPath, ctx.home), `Claude install path is not isolated: ${plugin.installPath}`);
-  const details = await command(hostBins.claude, ["plugin", "details", "pstack-pi"], ctx);
-  const row = details.match(/^\s+Skills \(\d+\)\s+(.+)$/mu);
-  assert.ok(row, "Claude component inventory missing skills");
-  inventory(row[1].split(/,\s*/u), ctx.expected ?? await skillNames(plugin.installPath), "Claude Code");
-  ctx.installed = true;
-}
-
 async function codexCatalog(ctx) {
   return rpc(hostBins.codex, ["app-server", "--listen", "stdio://"], ctx, async (request, notify) => {
     const initialized = await request({ id: 1, method: "initialize", params: { clientInfo: { name: "pstack-install-check", title: "pstack install check", version: "1.0.0" }, capabilities: null } });
@@ -322,7 +306,7 @@ async function geminiInstall(ctx) {
   ctx.installed = true;
 }
 
-const cases = [["OMP", "omp", ompInstall], ["Pi", "pi", piInstall], ["OpenCode global", "opencode", (ctx) => opencodeInstall(ctx, true)], ["OpenCode project", "opencode", (ctx) => opencodeInstall(ctx, false)], ["Claude Code", "claude", claudeInstall], ["Codex", "codex", codexInstall], ["Gemini", "gemini", geminiInstall]];
+const cases = [["OMP", "omp", ompInstall], ["Pi", "pi", piInstall], ["OpenCode global", "opencode", (ctx) => opencodeInstall(ctx, true)], ["OpenCode project", "opencode", (ctx) => opencodeInstall(ctx, false)], ["Codex", "codex", codexInstall], ["Gemini", "gemini", geminiInstall]];
 
 test("real host installation leaves live agent configuration unchanged", async (t) => {
   const snapshots = new Map(await Promise.all(livePaths.map(async (path) => [path, await snapshot(path)])));

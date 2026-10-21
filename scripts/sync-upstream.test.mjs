@@ -97,7 +97,7 @@ for (const missingGuide of [false, true]) {
         assert.match(result.stderr, /Missing upstream documentation/u);
         assert.equal(await readFile(join(target, "upstream.lock.json"), "utf8"), originalLock);
         assert.deepEqual(await readdir(target), [
-          ".claude-plugin", ".codex-plugin", "package.json", "upstream.lock.json",
+    ".codex-plugin", "package.json", "upstream.lock.json",
         ]);
         return;
       }
@@ -763,6 +763,72 @@ async function reviewFixture(run) {
   }
 }
 
+for (const outcome of ["conflicts", "clean", "missing baseline", "invalid version", "export failure"]) {
+  test(`scheduled candidate handles ${outcome} without bypassing proposal review`, async () => {
+    await reviewFixture(async ({ directory, source, target, git, lock }) => {
+      const workflow = await readFile(new URL("../.github/workflows/upstream-sync.yml", import.meta.url), "utf8");
+      const update = workflow.match(/      - id: update\n[\s\S]*?        run: \|\n((?:          .*\n|\n)+)/u)?.[1];
+      assert.ok(update, "candidate update shell must be executable in the regression test");
+      const run = update.replace(/^          /gmu, "");
+      const runnerTemp = join(directory, "runner");
+      const output = join(directory, "output");
+      const summary = join(directory, "summary");
+      await mkdir(runnerTemp);
+      await writeFile(output, "");
+      await writeFile(summary, "");
+      const config = { ...JSON.parse(lock), repository: source };
+      if (outcome === "missing baseline") config.commit = "a".repeat(40);
+      await writeFile(join(target, "upstream.lock.json"), JSON.stringify(config));
+      if (outcome === "clean") await writeFile(join(target, "skills/private/a.md"), "base\n");
+      if (outcome === "invalid version") await writeFile(join(target, "package.json"), '{"version":"invalid"}');
+      if (outcome === "export failure") await mkdir(join(runnerTemp, "pstack-review"));
+      await mkdir(join(target, "scripts"));
+      await writeFile(join(target, "scripts/sync-upstream.mjs"), await readFile(new URL("./sync-upstream.mjs", import.meta.url)));
+      const targetGit = (...args) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", ...args], { cwd: target, encoding: "utf8" }).trim();
+      targetGit("init", "-q", "-b", "main");
+      targetGit("add", ".");
+      targetGit("-c", "user.name=Workflow test", "-c", "user.email=workflow@example.invalid", "commit", "-qm", "base");
+      const result = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", run], {
+        cwd: target,
+        encoding: "utf8",
+        env: { ...process.env, PSTACK_SYNC_ROOT: target, RUNNER_TEMP: runnerTemp, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary },
+      });
+      const outputs = await readFile(output, "utf8");
+      if (outcome === "conflicts") {
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(outputs, /^changed=false$/mu);
+        assert.match(outputs, /^review-required=true$/mu);
+        const review = join(runnerTemp, "pstack-review");
+        const manifest = JSON.parse(await readFile(join(review, "manifest.json"), "utf8"));
+        assert.equal(manifest.commit, git("rev-parse", "HEAD"));
+        const conflict = manifest.entries.find(entry => entry.outcome.kind === "conflict");
+        assert.equal(conflict.path, "skills/private/a.md");
+        assert.equal(conflict.decision, null);
+        assert.match(await readFile(join(review, "entries", conflict.id, "proposal.txt"), "utf8"), /<<<<<<<|>>>>>>>/u);
+        const text = await readFile(summary, "utf8");
+        assert.match(text, /upstream-review/u);
+        assert.match(text, /skills\/private\/a\.md/u);
+        assert.match(text, /--apply --review/u);
+        assert.equal(await readFile(join(review, "review-summary.md"), "utf8"), text);
+        assert.match(workflow, /if: steps\.update\.outputs\.review-required == 'true'\n\s+name: Upload conflict review artifact/u);
+        assert.match(workflow, /name: upstream-review\n\s+path: \$\{\{ runner\.temp \}\}\/pstack-review/u);
+        assert.match(workflow, /propose:\n\s+needs: candidate\n\s+if: needs\.candidate\.outputs\.changed == 'true'/u);
+      } else if (outcome === "clean") {
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(outputs, /^changed=true$/mu);
+        assert.doesNotMatch(outputs, /review-required=true/u);
+        assert.equal(await readFile(join(target, "skills/private/a.md"), "utf8"), "incoming\n");
+        assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"), "utf8")).commit, git("rev-parse", "HEAD"));
+        return;
+      } else {
+        assert.notEqual(result.status, 0, `${outcome} must fail the candidate job`);
+        assert.doesNotMatch(outputs, /changed=true|review-required=true/u);
+      }
+      assert.equal(targetGit("status", "--porcelain"), "", "conflicts and errors must leave the checkout unchanged");
+    });
+  });
+}
+
 test("review export and reviewed dry-run leave all destination inputs untouched", async () => {
   await reviewFixture(async ({ exportReview, approve, cli, review, untouched }) => {
     const manifest = await exportReview();
@@ -995,10 +1061,8 @@ test("review default file:// acquisition replays only with fetchable original ba
 
 async function seedPortableVersions(target, version) {
   await mkdir(target, { recursive: true });
-  await mkdir(join(target, ".claude-plugin"), { recursive: true });
   await mkdir(join(target, ".codex-plugin"), { recursive: true });
   await writeFile(join(target, "package.json"), `${JSON.stringify({ name: "pstack-pi", version }, null, 2)}\n`);
-  await writeFile(join(target, ".claude-plugin", "plugin.json"), `${JSON.stringify({ name: "pstack-pi", version }, null, 2)}\n`);
   await writeFile(join(target, ".codex-plugin", "plugin.json"), `${JSON.stringify({ name: "pstack-pi", version, skills: "./skills/" }, null, 2)}\n`);
 }
 
@@ -1011,7 +1075,7 @@ async function seedUpstreamPlugin(source, version) {
 test("source-version updates preserve independent fork manifests byte-for-byte", async () => {
   await versionFixture(async ({ source, target, git, cli, bump }) => {
     await seedPortableVersions(target, "9.0.0");
-    const paths = ["package.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json"];
+    const paths = ["package.json", ".codex-plugin/plugin.json"];
     const before = new Map(await Promise.all(paths.map(async path => [path, await readFile(join(target, path))])));
     await bump();
     const latest = git("rev-parse", "HEAD");
@@ -1066,7 +1130,7 @@ async function versionFixture(run) {
   }
 }
 
-for (const manifest of [".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]) {
+for (const manifest of [".codex-plugin/plugin.json"]) {
   test(`fork consistency rejects mismatched ${manifest} before destination writes`, async () => {
     await versionFixture(async ({ target, baseline, cli, bump }) => {
       await bump();
@@ -1099,7 +1163,7 @@ for (const failure of ["missing", "invalid JSON", "invalid UTF-8", "missing vers
       assert.notEqual(result.status, 0, result.stdout);
       assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"), "utf8")).commit, baseline);
       assert.equal(await readFile(join(target, "skills/managed/SKILL.md"), "utf8"), "baseline\n");
-      for (const rel of ["package.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]) {
+      for (const rel of ["package.json", ".codex-plugin/plugin.json"]) {
         assert.equal(JSON.parse(await readFile(join(target, rel), "utf8")).version, "1.2.3");
       }
     });
@@ -1128,7 +1192,6 @@ for (const failure of ["invalid JSON", "missing", "symlink", "symlinked director
       assert.equal(JSON.parse(await readFile(join(target, "upstream.lock.json"), "utf8")).commit, baseline);
       assert.equal(await readFile(join(target, "skills/managed/SKILL.md"), "utf8"), "baseline\n");
       assert.equal(JSON.parse(await readFile(join(target, "package.json"), "utf8")).version, "1.2.3");
-      assert.equal(JSON.parse(await readFile(join(target, ".claude-plugin/plugin.json"), "utf8")).version, "1.2.3");
       assert.equal(await readFile(external, "utf8"), '{"version":"1.2.3","sentinel":"external"}\n');
       if (failure === "symlinked directory") {
         assert.equal(await readFile(join(directory, "outside/plugin.json"), "utf8"), '{"version":"1.2.3","sentinel":"external"}\n');
@@ -1371,7 +1434,7 @@ test("source-version checking accepts an independent OMP prerelease", async () =
     assert.equal(cli("--check").status, 0);
     const result = cli("--apply");
     assert.equal(result.status, 0, result.stderr);
-    for (const path of ["package.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]) {
+      for (const path of ["package.json", ".codex-plugin/plugin.json"]) {
       assert.equal(JSON.parse(await readFile(join(target, path), "utf8")).version, "0.15.13-omp.1");
     }
   });

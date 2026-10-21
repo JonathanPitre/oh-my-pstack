@@ -5,6 +5,11 @@ const root = resolve(import.meta.dirname, "..");
 const skillsRoot = join(root, "skills");
 const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u;
 const requiredSkills = new Set([
+  "sharpen",
+  "maintain-formal-verification-skill",
+  "ketchup",
+  "in-your-own-words",
+  "create-formal-verification-skill",
   "architect",
   "arena",
   "automate-me",
@@ -158,7 +163,6 @@ for (const path of markdownFiles) {
 }
 
 for (const path of [
-  join(root, ".claude-plugin", "plugin.json"),
   join(root, ".codex-plugin", "plugin.json"),
   join(root, "upstream.lock.json"),
 ]) {
@@ -175,7 +179,6 @@ try {
     "pstack",
     "agent-skills",
     "coding-agent",
-    "claude-code",
     "codex",
   ];
   if (packageManifest.name !== "pstack-pi") {
@@ -187,36 +190,22 @@ try {
   if (requiredKeywords.some((keyword) => !packageManifest.keywords?.includes(keyword))) {
     failures.push("package.json is missing discoverability keywords");
   }
-  const claudeManifest = JSON.parse(
-    await readFile(join(root, ".claude-plugin", "plugin.json"), "utf8")
-  );
-  if (claudeManifest.name !== "pstack-pi") {
-    failures.push(".claude-plugin/plugin.json does not use the pstack-pi name");
-  }
   const codexManifest = JSON.parse(
     await readFile(join(root, ".codex-plugin", "plugin.json"), "utf8")
   );
   if (codexManifest.name !== "pstack-pi" || codexManifest.skills !== "./skills/") {
     failures.push(".codex-plugin/plugin.json has incorrect package identity or skills path");
   }
-  const manifestVersions = [packageManifest.version, claudeManifest.version, codexManifest.version];
+  if (codexManifest.description !== packageManifest.description ||
+      codexManifest.keywords?.includes("claude-code") || packageManifest.keywords?.includes("claude-code")) {
+    failures.push("package and Codex metadata must agree on supported hosts without retired Claude Code support");
+  }
+  const manifestVersions = [packageManifest.version, codexManifest.version];
   if (manifestVersions.some(version => typeof version !== "string" || !SEMVER.test(version))) {
     failures.push("package and plugin manifests require valid fork SemVer strings");
   }
   if (new Set(manifestVersions).size !== 1) {
     failures.push(`package and plugin manifests disagree on version: ${manifestVersions.join(", ")}`);
-  }
-  const claudeMarketplace = JSON.parse(
-    await readFile(join(root, ".claude-plugin", "marketplace.json"), "utf8")
-  );
-  if (
-    claudeMarketplace.name !== "oh-my-pstack" ||
-    claudeMarketplace.owner?.name !== "JonathanPitre" ||
-    claudeMarketplace.plugins?.length !== 1 ||
-    claudeMarketplace.plugins[0]?.name !== "pstack-pi" ||
-    claudeMarketplace.plugins[0]?.source !== "./"
-  ) {
-    failures.push(".claude-plugin/marketplace.json has incorrect marketplace or package identity");
   }
   const codexMarketplace = JSON.parse(
     await readFile(join(root, ".agents", "plugins", "marketplace.json"), "utf8")
@@ -233,7 +222,6 @@ try {
     failures.push(".agents/plugins/marketplace.json has incorrect marketplace or package identity");
   }
   for (const path of [
-    join(root, ".claude-plugin", "plugin.json"),
     join(root, ".codex-plugin", "plugin.json"),
     skillsRoot,
   ]) {
@@ -270,6 +258,20 @@ try {
 }
 
 const forbidden = [
+  "claude-opus-5-5-xhigh",
+  "grok-4.7-xhigh-fast",
+  "pstack-models.mdc",
+  "cursor-team-kit",
+  "delegate_task",
+  "orchestrator_capabilities",
+  "t3_thread_",
+  "run_in_background:",
+  "Pass a per-item `model` only when the live task schema exposes",
+  "when the live schema accepts a per-item model",
+  "git worktree remove --force",
+  "git worktree remove -f",
+  "<<<<<<<",
+  ">>>>>>>",
   "~/.cursor/",
   ".cursor/skills/",
   ".cursor/plugins/",

@@ -1,5 +1,14 @@
 # Changes
 
+## 0.15.29-omp.1, unreleased
+
+- Refresh Cursor pstack to `0.15.29` at `190d28736eff128ec94f502a22c7fe0c4b56cd37`. Add five skills and reconcile portable workflows. See the [refresh report](docs/upstream-refresh-2026-10-21.md).
+- Remove Claude Code marketplace distribution and installation checks. Direct Cursor, Claude, and Grok workflows to the original pstack plugin.
+- Correct OMP 18.12.5 ordinary child model routing through native agent settings. Reserve per-task `model` for historical `seance` consults.
+- Preserve scheduled sync conflicts as a downloadable review artifact. Skip privileged proposal publication for conflicts and keep unexpected errors fatal.
+- Add exact-head GitHub merge guards, independent-review availability checks, stopped-writer checks, and plain worktree removal with refusal as a stop.
+- Document the [comparison with other forks](docs/fork-assessment-2026-10.md). Keep the maintained OMP integration.
+
 ## 0.15.13-omp.1 — unreleased
 
 ### Release provenance

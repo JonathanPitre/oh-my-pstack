@@ -25,11 +25,11 @@ jobs:
       - name: Verify package
         run: npm run verify
       - name: Run credential-free unit tests
-        run: node --test scripts/verify.test.mjs scripts/sync-upstream.test.mjs scripts/sync-proposal.test.mjs scripts/omp-rpc.test.mjs scripts/package.test.mjs
+        run: node --test scripts/verify.test.mjs scripts/sync-upstream.test.mjs scripts/sync-proposal.test.mjs scripts/omp-rpc.test.mjs scripts/package.test.mjs scripts/worktree-audit.test.mjs
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - name: Test bundled scripts
         run: |
           bun install --cwd skills/poteto-mode/scripts --frozen-lockfile
-          bun test orch watch-pr
+          bun test orch watch-pr check-plan.test.ts
           bun run --cwd skills/poteto-mode/scripts typecheck

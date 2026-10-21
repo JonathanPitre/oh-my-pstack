@@ -7,16 +7,28 @@ import test from "node:test";
 
 const repository = resolve(import.meta.dirname, "..");
 
+test("verify rejects retired Claude Code support in the shipped Codex metadata", async () => {
+  await withVerifyFixture(async fixture => {
+    const path = join(fixture, ".codex-plugin/plugin.json");
+    const manifest = JSON.parse(await readFile(path, "utf8"));
+    manifest.keywords.push("claude-code");
+    await writeFile(path, JSON.stringify(manifest));
+    const result = spawnSync(process.execPath, [join(fixture, "scripts/verify.mjs")], { encoding: "utf8" });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /retired Claude Code support/u);
+  });
+});
+
 async function withVerifyFixture(run) {
   const fixture = await mkdtemp(join(tmpdir(), "pstack-verify-"));
   try {
-    for (const path of ["skills", "README.md", "package.json", "scripts/verify.mjs", ".claude-plugin", ".codex-plugin", ".agents", "upstream.lock.json", "docs/upstream-compatibility-design.md", "assets", "agents", "LICENSE", "THIRD_PARTY_NOTICES.md"]) {
+    for (const path of ["skills", "README.md", "package.json", "scripts/verify.mjs", ".codex-plugin", ".agents", "upstream.lock.json", "docs/upstream-compatibility-design.md", "assets", "agents", "LICENSE", "THIRD_PARTY_NOTICES.md"]) {
       await cp(join(repository, path), join(fixture, path), {
         recursive: true,
         filter: source => !source.split("/").includes("node_modules"),
       });
     }
-    for (const path of ["docs/installation.md", "docs/maintenance.md", "CHANGES.md"]) {
+    for (const path of ["docs/installation.md", "docs/maintenance.md", "docs/fork-assessment-2026-10.md", "docs/upstream-refresh-2026-10-21.md", "CHANGES.md"]) {
       try { await access(join(repository, path)); }
       catch (error) { if (error.code === "ENOENT") continue; throw error; }
       await cp(join(repository, path), join(fixture, path));
@@ -54,7 +66,7 @@ for (const [label, target, version] of [
   test(`verify rejects ${label}`, async () => {
     await withVerifyFixture(async fixture => {
       const paths = target === "fork"
-        ? ["package.json", ".claude-plugin/plugin.json", ".codex-plugin/plugin.json"]
+        ? ["package.json", ".codex-plugin/plugin.json"]
         : ["upstream.lock.json"];
       for (const path of paths) {
         const destination = join(fixture, path), manifest = JSON.parse(await readFile(destination, "utf8"));
